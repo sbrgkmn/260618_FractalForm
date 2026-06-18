@@ -35,11 +35,13 @@ type Params = {
   refineMode: "off" | "smooth" | "fixedCorners";
   refineSteps: number;
   refineAmount: number;
+  refineRelax: number;
+  refineEdgeInflate: number;
+  refineFaceInflate: number;
   massH: number;
   massD: number;
   massW: number;
   recursion: number;
-  recursion2: number;
   divThreshold: number;
   posA: number;
   ampA: number;
@@ -59,9 +61,6 @@ type Params = {
   conPosC: number;
   conAmpC: number;
   conRotC: number;
-  topPos: number;
-  topAmp: number;
-  topRot: number;
   showContract: boolean;
   expansiveABVertical: boolean;
   showPointNormals: boolean;
@@ -80,12 +79,14 @@ const params: Params = {
   topology: "quad",
   refineMode: "fixedCorners",
   refineSteps: 1,
-  refineAmount: 0.08,
+  refineAmount: 0.12,
+  refineRelax: 0.18,
+  refineEdgeInflate: 0.35,
+  refineFaceInflate: 0.1,
   massH: 51,
   massD: 40,
   massW: 40,
   recursion: 4,
-  recursion2: 2,
   divThreshold: 2.2,
   posA: 0.5,
   ampA: 0.74,
@@ -105,9 +106,6 @@ const params: Params = {
   conPosC: 0.5,
   conAmpC: -0.1,
   conRotC: 0.5,
-  topPos: 0.49,
-  topAmp: -0.72,
-  topRot: 0.48,
   showContract: false,
   expansiveABVertical: true,
   showPointNormals: false,
@@ -189,7 +187,6 @@ function buildControls(): void {
     slider("massD", "Mass D", 5, 50, 1),
     slider("massW", "Mass W", 5, 50, 1),
     slider("recursion", "Recursion", 0, 6, 1),
-    slider("recursion2", "Top refine", 0, 4, 1),
     slider("divThreshold", "Min edge", 0, 12, 0.1)
   ]);
 
@@ -200,7 +197,10 @@ function buildControls(): void {
       ["fixedCorners", "fixed corners"]
     ]),
     slider("refineSteps", "Steps", 0, 3, 1),
-    slider("refineAmount", "Inflate", -0.6, 0.6, 0.01)
+    slider("refineAmount", "Inflate", -2, 2, 0.01),
+    slider("refineRelax", "Relax", 0, 1, 0.01),
+    slider("refineEdgeInflate", "Edge inflate", 0, 1, 0.01),
+    slider("refineFaceInflate", "Face inflate", 0, 1, 0.01)
   ]);
 
   addFieldset("Rule Toggles", [
@@ -213,6 +213,11 @@ function buildControls(): void {
     readout("Seed", String(params.randomSeed)),
     button("Random target-like", () => {
       randomizeTargetLike();
+      buildControls();
+      rebuildLab();
+    }),
+    button("Reset", () => {
+      resetParams();
       buildControls();
       rebuildLab();
     })
@@ -243,40 +248,6 @@ function buildControls(): void {
     slider("conRotC", "Con Rot C", 0, 1, 0.01)
   ]);
 
-  addFieldset("Crown Stage", [
-    slider("topPos", "Top Pos", 0, 1, 0.01),
-    slider("topAmp", "Top Amp", -0.8, 0.8, 0.01),
-    slider("topRot", "Top Rot", 0, 1, 0.01),
-    button("Reset", () => {
-      Object.assign(params, {
-        posA: 0.5,
-        ampA: 0.74,
-        rotA: 0.5,
-        posB: 0.5,
-        ampB: 0.12,
-        rotB: 0.5,
-        posC: 0.56,
-        ampC: 0.43,
-        rotC: 0.57,
-        conAmpA: 0.1,
-        conAmpB: -0.1,
-        conAmpC: -0.1,
-        topPos: 0.49,
-        topAmp: -0.72,
-        topRot: 0.48,
-        expansiveABVertical: true,
-        showPointNormals: false,
-        contractToExpansionCenters: true,
-        showContract: false,
-        refineMode: "fixedCorners",
-        refineSteps: 1,
-        refineAmount: 0.08,
-        randomSeed: 1841919
-      });
-      buildControls();
-      rebuildLab();
-    })
-  ]);
 }
 
 function addFieldset(title: string, children: HTMLElement[]): void {
@@ -367,6 +338,46 @@ function readout(labelText: string, value: string): HTMLElement {
   return label;
 }
 
+function resetParams(): void {
+  Object.assign(params, {
+    topology: "quad",
+    refineMode: "fixedCorners",
+    refineSteps: 1,
+    refineAmount: 0.12,
+    refineRelax: 0.18,
+    refineEdgeInflate: 0.35,
+    refineFaceInflate: 0.1,
+    massH: 51,
+    massD: 40,
+    massW: 40,
+    recursion: 4,
+    divThreshold: 2.2,
+    posA: 0.5,
+    ampA: 0.74,
+    rotA: 0.5,
+    posB: 0.5,
+    ampB: 0.12,
+    rotB: 0.5,
+    posC: 0.56,
+    ampC: 0.43,
+    rotC: 0.57,
+    conPosA: 0.5,
+    conAmpA: 0.1,
+    conRotA: 0.5,
+    conPosB: 0.5,
+    conAmpB: -0.1,
+    conRotB: 0.5,
+    conPosC: 0.5,
+    conAmpC: -0.1,
+    conRotC: 0.5,
+    expansiveABVertical: true,
+    showPointNormals: false,
+    contractToExpansionCenters: true,
+    showContract: false,
+    randomSeed: 1841919
+  });
+}
+
 function randomizeTargetLike(seed = randomSeed()): void {
   const rng = new SeededRandom(seed);
   const base = roundTo(rng.range(36, 44), 1);
@@ -376,11 +387,13 @@ function randomizeTargetLike(seed = randomSeed()): void {
     massD: base,
     massW: base,
     recursion: rng.int(4, 5),
-    recursion2: rng.int(1, 2),
     divThreshold: roundTo(rng.range(1.8, 3.2), 0.1),
     refineMode: rng.next() > 0.35 ? "fixedCorners" : "smooth",
     refineSteps: rng.int(1, 2),
-    refineAmount: randomNear(rng, 0.08, 0.08, -0.08, 0.18),
+    refineAmount: randomNear(rng, 0.12, 0.16, -0.12, 0.32),
+    refineRelax: randomNear(rng, 0.2, 0.1),
+    refineEdgeInflate: randomNear(rng, 0.35, 0.15),
+    refineFaceInflate: randomNear(rng, 0.1, 0.08),
     posA: randomNear(rng, 0.5, 0.05),
     ampA: randomNear(rng, 0.66, 0.1),
     rotA: randomNear(rng, 0.5, 0.06),
@@ -399,9 +412,6 @@ function randomizeTargetLike(seed = randomSeed()): void {
     conPosC: randomNear(rng, 0.5, 0.04),
     conAmpC: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
     conRotC: randomNear(rng, 0.5, 0.05),
-    topPos: randomNear(rng, 0.5, 0.05),
-    topAmp: randomNear(rng, -0.72, 0.08, -0.8, -0.55),
-    topRot: randomNear(rng, 0.5, 0.06),
     showContract: false,
     expansiveABVertical: true,
     contractToExpansionCenters: true,
@@ -546,9 +556,9 @@ function subdivideOnce(
   cache?: EdgeCache,
   level = 0
 ): AlgoTriangle[] {
-  const ab = edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, false, cache, level);
-  const bc = edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, false, cache, level);
-  const ca = edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, false, cache, level);
+  const ab = edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level);
+  const bc = edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level);
+  const ca = edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level);
 
   return [
     {
@@ -597,32 +607,13 @@ function subdivideRecursive(
   output: AlgoTriangle[],
   cache: EdgeCache
 ): void {
-  const maxLevel = params.recursion + params.recursion2;
-  if (level >= maxLevel || longestEdge(triangle) < params.divThreshold) {
+  if (level >= params.recursion || longestEdge(triangle) < params.divThreshold) {
     output.push(triangle);
     return;
   }
 
-  const crownStage = level >= params.recursion;
-  const children = crownStage ? subdivideTop(triangle, polarity, cache, level) : subdivideOnce(triangle, polarity, cache, level);
+  const children = subdivideOnce(triangle, polarity, cache, level);
   for (const child of children) subdivideRecursive(child, level + 1, !polarity, output, cache);
-}
-
-function subdivideTop(
-  triangle: AlgoTriangle,
-  polarity: boolean,
-  cache?: EdgeCache,
-  level = 0
-): AlgoTriangle[] {
-  const ab = edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, true, cache, level);
-  const bc = edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, true, cache, level);
-  const ca = edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, true, cache, level);
-  return [
-    { a: bc, b: ca, c: ab, state: true, dirA: false, dirB: false, dirC: false },
-    { a: triangle.a, b: ab, c: ca, state: true, dirA: false, dirB: false, dirC: false },
-    { a: ab, b: triangle.b, c: bc, state: true, dirA: false, dirB: false, dirC: false },
-    { a: ca, b: bc, c: triangle.c, state: true, dirA: false, dirB: false, dirC: false }
-  ];
 }
 
 function edgeConstruct(
@@ -630,23 +621,17 @@ function edgeConstruct(
   b: PointNode,
   edge: "A" | "B" | "C",
   polarity: boolean,
-  dir: boolean,
-  crown: boolean,
-  level = 0
+  dir: boolean
 ): PointNode {
-  const settings = crown
-    ? topSettings(dir, level)
-    : polarity
-      ? expandSettings(edge, dir)
-      : contractSettings(edge, dir);
+  const settings = polarity ? expandSettings(edge, dir) : contractSettings(edge, dir);
   const origin = edgeOrigin(a, b, settings.pos);
-  const verticalAB = !crown && params.expansiveABVertical && (edge === "A" || edge === "B");
+  const verticalAB = params.expansiveABVertical && (edge === "A" || edge === "B");
   const pol =
     verticalAB
       ? new THREE.Vector3(0, 1, 0)
       : a.polarity.clone().lerp(b.polarity, settings.rot).normalize();
 
-  if (!polarity && !crown && params.contractToExpansionCenters) {
+  if (!polarity && params.contractToExpansionCenters) {
     const target = expansionCenterForEdge(a, b, edge, dir);
     const toTarget = target.position.clone().sub(origin);
     if (toTarget.lengthSq() > 0.000001) {
@@ -670,17 +655,16 @@ function edgeConstructCached(
   edge: "A" | "B" | "C",
   polarity: boolean,
   dir: boolean,
-  crown: boolean,
   cache: EdgeCache | undefined,
   level: number
 ): PointNode {
-  if (!cache) return edgeConstruct(a, b, edge, polarity, dir, crown, level);
+  if (!cache) return edgeConstruct(a, b, edge, polarity, dir);
 
-  const key = sharedEdgeKey(a.position, b.position, level, polarity, crown);
+  const key = sharedEdgeKey(a.position, b.position, level, polarity);
   const existing = cache.get(key);
   if (existing) return existing;
 
-  const created = edgeConstruct(a, b, edge, polarity, dir, crown, level);
+  const created = edgeConstruct(a, b, edge, polarity, dir);
   cache.set(key, created);
   return created;
 }
@@ -689,13 +673,12 @@ function sharedEdgeKey(
   a: THREE.Vector3,
   b: THREE.Vector3,
   level: number,
-  polarity: boolean,
-  crown: boolean
+  polarity: boolean
 ): string {
   const ak = pointKey(a);
   const bk = pointKey(b);
   const edge = ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
-  return `${level}:${polarity ? "expand" : "contract"}:${crown ? "crown" : "body"}:${edge}`;
+  return `${level}:${polarity ? "expand" : "contract"}:${edge}`;
 }
 
 function expansionCenterForEdge(a: PointNode, b: PointNode, edge: "A" | "B" | "C", dir: boolean): PointNode {
@@ -725,21 +708,12 @@ function contractSettings(edge: "A" | "B" | "C", dir: boolean): { pos: number; a
   return { pos: dir ? params.conPosC : 1 - params.conPosC, amp: params.conAmpC, rot: dir ? params.conRotC : 1 - params.conRotC };
 }
 
-function topSettings(dir: boolean, level: number): { pos: number; amp: number; rot: number } {
-  const crownIndex = Math.max(0, level - params.recursion);
-  const crownCount = Math.max(1, params.recursion2);
-  const crownProgress = crownCount <= 1 ? 0 : crownIndex / (crownCount - 1);
-  const crownTaper = clamp(1 - crownProgress * 0.55, 0.35, 1);
-  const edgeRelativeAmp = clamp(params.topAmp * 0.32 * crownTaper, -0.28, 0.28);
-  return { pos: dir ? params.topPos : 1 - params.topPos, amp: edgeRelativeAmp, rot: params.topRot };
-}
-
 function drawEdgeOperation(base: AlgoTriangle): void {
   clearGroup(edgeGroup);
   const polarity = !params.showContract;
-  const ab = edgeConstruct(base.a, base.b, "A", polarity, base.dirA, false);
-  const bc = edgeConstruct(base.b, base.c, "B", polarity, base.dirB, false);
-  const ca = edgeConstruct(base.c, base.a, "C", polarity, base.dirC, false);
+  const ab = edgeConstruct(base.a, base.b, "A", polarity, base.dirA);
+  const bc = edgeConstruct(base.b, base.c, "B", polarity, base.dirB);
+  const ca = edgeConstruct(base.c, base.a, "C", polarity, base.dirC);
   edgeGroup.add(triangleMesh([base], 0xf2f0e8, 0.28));
   edgeGroup.add(polyline([base.a.position, base.b.position, base.c.position, base.a.position], 0x111111, 1));
   addEdgeMarker(edgeGroup, base.a, base.b, ab, 0xff4f4f);
@@ -819,7 +793,7 @@ function subdivideMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: nu
     const position = a.clone().add(b).multiplyScalar(0.5);
     if (mode === "fixedCorners" && amount !== 0) {
       const normal = normals[ia].clone().add(normals[ib]).normalize();
-      position.addScaledVector(normal, a.distanceTo(b) * amount * 0.35);
+      position.addScaledVector(normal, a.distanceTo(b) * amount * params.refineEdgeInflate);
     }
     const index = vertices.length;
     vertices.push(position);
@@ -841,8 +815,9 @@ function smoothMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: numbe
   const neighbors = meshNeighbors(mesh);
   const normals = meshVertexNormals(mesh);
   const preserveFixed = mode === "fixedCorners";
-  const smoothStrength = mode === "smooth" ? 0.34 : 0.16;
-  const normalStrength = mode === "smooth" ? 0.18 : 0.08;
+  const modeRelax = mode === "smooth" ? 1 : 0.55;
+  const smoothStrength = clamp(params.refineRelax * modeRelax, 0, 1);
+  const normalStrength = params.refineFaceInflate;
   const vertices = mesh.vertices.map((vertex, index) => {
     if (preserveFixed && mesh.fixed.has(index)) return vertex.clone();
     const linked = neighbors[index];
