@@ -180,7 +180,7 @@ function buildControls(): void {
   ]);
 
   addFieldset("Rule Toggles", [
-    checkbox("expansiveABVertical", "Expand A/B vertical"),
+    checkbox("expansiveABVertical", "A/B vertical displacement"),
     checkbox("showPointNormals", "Show point normals"),
     checkbox("contractToExpansionCenters", "Contract to expand centers")
   ]);
@@ -573,8 +573,9 @@ function edgeConstruct(
       ? expandSettings(edge, dir)
       : contractSettings(edge, dir);
   const origin = edgeOrigin(a, b, settings.pos);
+  const verticalAB = !crown && params.expansiveABVertical && (edge === "A" || edge === "B");
   const pol =
-    polarity && !crown && params.expansiveABVertical && (edge === "A" || edge === "B")
+    verticalAB
       ? new THREE.Vector3(0, 1, 0)
       : a.polarity.clone().lerp(b.polarity, settings.rot).normalize();
 
@@ -582,7 +583,9 @@ function edgeConstruct(
     const target = expansionCenterForEdge(a, b, edge, dir);
     const toTarget = target.position.clone().sub(origin);
     if (toTarget.lengthSq() > 0.000001) {
-      const directionToTarget = toTarget.normalize();
+      const directionToTarget = verticalAB
+        ? new THREE.Vector3(0, Math.sign(toTarget.y) || 1, 0)
+        : toTarget.normalize();
       const sign = settings.amp <= 0 ? 1 : -1;
       const signedDirection = directionToTarget.clone().multiplyScalar(sign);
       const displacement = signedDirection.clone().multiplyScalar(a.position.distanceTo(b.position) * Math.abs(settings.amp));
