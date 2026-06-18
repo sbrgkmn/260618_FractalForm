@@ -595,10 +595,11 @@ function edgeConstruct(
   edge: "A" | "B" | "C",
   polarity: boolean,
   dir: boolean,
-  crown: boolean
+  crown: boolean,
+  level = 0
 ): PointNode {
   const settings = crown
-    ? topSettings(dir)
+    ? topSettings(dir, level)
     : polarity
       ? expandSettings(edge, dir)
       : contractSettings(edge, dir);
@@ -637,13 +638,13 @@ function edgeConstructCached(
   cache: EdgeCache | undefined,
   level: number
 ): PointNode {
-  if (!cache) return edgeConstruct(a, b, edge, polarity, dir, crown);
+  if (!cache) return edgeConstruct(a, b, edge, polarity, dir, crown, level);
 
   const key = sharedEdgeKey(a.position, b.position, level, polarity, crown);
   const existing = cache.get(key);
   if (existing) return existing;
 
-  const created = edgeConstruct(a, b, edge, polarity, dir, crown);
+  const created = edgeConstruct(a, b, edge, polarity, dir, crown, level);
   cache.set(key, created);
   return created;
 }
@@ -688,8 +689,13 @@ function contractSettings(edge: "A" | "B" | "C", dir: boolean): { pos: number; a
   return { pos: dir ? params.conPosC : 1 - params.conPosC, amp: params.conAmpC, rot: dir ? params.conRotC : 1 - params.conRotC };
 }
 
-function topSettings(dir: boolean): { pos: number; amp: number; rot: number } {
-  return { pos: dir ? params.topPos : 1 - params.topPos, amp: params.topAmp, rot: params.topRot };
+function topSettings(dir: boolean, level: number): { pos: number; amp: number; rot: number } {
+  const crownIndex = Math.max(0, level - params.recursion);
+  const crownCount = Math.max(1, params.recursion2);
+  const crownProgress = crownCount <= 1 ? 0 : crownIndex / (crownCount - 1);
+  const crownTaper = clamp(1 - crownProgress * 0.55, 0.35, 1);
+  const edgeRelativeAmp = clamp(params.topAmp * 0.32 * crownTaper, -0.28, 0.28);
+  return { pos: dir ? params.topPos : 1 - params.topPos, amp: edgeRelativeAmp, rot: params.topRot };
 }
 
 function drawEdgeOperation(base: AlgoTriangle): void {
