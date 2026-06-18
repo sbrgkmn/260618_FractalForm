@@ -28,10 +28,11 @@ type IndexedMesh = {
   faces: MeshFace[];
   fixed: Set<number>;
 };
-type SymmetryTransform = "identity" | "mirror" | "rotate" | "rotateMirror";
+type SymmetryTransform = "identity" | "mirror" | "rotate" | "rotateMirror" | "quarter" | "half" | "threeQuarter";
 
 type Params = {
   topology: "single" | "double" | "quad";
+  axisSymmetry: boolean;
   refineMode: "off" | "smooth" | "fixedCorners";
   refineSteps: number;
   refineAmount: number;
@@ -77,6 +78,7 @@ type View = {
 
 const params: Params = {
   topology: "quad",
+  axisSymmetry: true,
   refineMode: "fixedCorners",
   refineSteps: 1,
   refineAmount: 0.12,
@@ -183,9 +185,10 @@ function buildControls(): void {
       ["double", "double half pyramid"],
       ["quad", "quad full pyramid"]
     ]),
+    checkbox("axisSymmetry", "Primary axis symmetry"),
     slider("massH", "Mass H", 10, 80, 1),
     slider("massD", "Mass D", 5, 50, 1),
-    slider("massW", "Mass W", 5, 50, 1),
+    ...(params.axisSymmetry ? [] : [slider("massW", "Mass W", 5, 50, 1)]),
     slider("recursion", "Recursion", 0, 6, 1),
     slider("divThreshold", "Min edge", 0, 12, 0.1)
   ]);
@@ -274,6 +277,7 @@ function slider(key: keyof Params, labelText: string, min: number, max: number, 
   output.textContent = formatValue(Number(params[key]));
   input.addEventListener("input", () => {
     (params[key] as number) = Number(input.value);
+    if (key === "massD" && params.axisSymmetry) params.massW = params.massD;
     output.textContent = formatValue(Number(input.value));
     rebuildLab();
   });
@@ -291,6 +295,8 @@ function checkbox(key: keyof Params, labelText: string): HTMLElement {
   input.checked = Boolean(params[key]);
   input.addEventListener("change", () => {
     (params[key] as boolean) = input.checked;
+    if (key === "axisSymmetry" && input.checked) params.massW = params.massD;
+    if (key === "axisSymmetry") buildControls();
     rebuildLab();
   });
   label.append(name, input);
@@ -341,6 +347,7 @@ function readout(labelText: string, value: string): HTMLElement {
 function resetParams(): void {
   Object.assign(params, {
     topology: "quad",
+    axisSymmetry: true,
     refineMode: "fixedCorners",
     refineSteps: 1,
     refineAmount: 0.12,
@@ -383,6 +390,7 @@ function randomizeTargetLike(seed = randomSeed()): void {
   const base = roundTo(rng.range(36, 44), 1);
   Object.assign(params, {
     topology: "quad",
+    axisSymmetry: true,
     massH: Math.round(rng.range(48, 66)),
     massD: base,
     massW: base,
@@ -481,11 +489,16 @@ function rebuildLab(): void {
 }
 
 function baseTriangle(): AlgoTriangle {
+  const footprint = baseFootprint();
   return makeSeed(
-    point(new THREE.Vector3(-params.massD, 0, params.massW), new THREE.Vector3(-1, 0, 1)),
+    point(new THREE.Vector3(-footprint.x, 0, footprint.z), new THREE.Vector3(-1, 0, 1)),
     point(new THREE.Vector3(0, params.massH, 0), new THREE.Vector3(0, 1, 0)),
-    point(new THREE.Vector3(params.massD, 0, params.massW), new THREE.Vector3(1, 0, 1))
+    point(new THREE.Vector3(footprint.x, 0, footprint.z), new THREE.Vector3(1, 0, 1))
   );
+}
+
+function baseFootprint(): { x: number; z: number } {
+  return params.axisSymmetry ? { x: params.massD, z: params.massD } : { x: params.massD, z: params.massW };
 }
 
 function initialTopology(): AlgoTriangle[] {
@@ -494,6 +507,11 @@ function initialTopology(): AlgoTriangle[] {
 }
 
 function topologyTransforms(): SymmetryTransform[] {
+  if (params.axisSymmetry) {
+    if (params.topology === "single") return ["identity"];
+    if (params.topology === "double") return ["identity", "quarter"];
+    return ["identity", "quarter", "half", "threeQuarter"];
+  }
   if (params.topology === "single") return ["identity"];
   if (params.topology === "double") return ["identity", "mirror"];
   return ["identity", "mirror", "rotate", "rotateMirror"];
@@ -521,6 +539,9 @@ function transformPointNode(pointNode: PointNode, transform: SymmetryTransform):
 
 function transformVector(vector: THREE.Vector3, transform: SymmetryTransform, normalize: boolean): THREE.Vector3 {
   const transformed = vector.clone();
+  if (transform === "quarter") rotateAroundPrimaryAxis(transformed, 1);
+  if (transform === "half") rotateAroundPrimaryAxis(transformed, 2);
+  if (transform === "threeQuarter") rotateAroundPrimaryAxis(transformed, 3);
   if (transform === "mirror" || transform === "rotateMirror") mirrorDiagonal(transformed);
   if (transform === "rotate" || transform === "rotateMirror") {
     transformed.x *= -1;
@@ -529,11 +550,27 @@ function transformVector(vector: THREE.Vector3, transform: SymmetryTransform, no
   return normalize && transformed.lengthSq() > 0 ? transformed.normalize() : transformed;
 }
 
+function rotateAroundPrimaryAxis(vector: THREE.Vector3, turns: 1 | 2 | 3): void {
+  const x = vector.x;
+  const z = vector.z;
+  if (turns === 1) {
+    vector.x = z;
+    vector.z = -x;
+  } else if (turns === 2) {
+    vector.x = -x;
+    vector.z = -z;
+  } else {
+    vector.x = -z;
+    vector.z = x;
+  }
+}
+
 function mirrorDiagonal(vector: THREE.Vector3): void {
   const x = vector.x;
   const z = vector.z;
-  const xScale = params.massW === 0 ? 1 : params.massD / params.massW;
-  const zScale = params.massD === 0 ? 1 : params.massW / params.massD;
+  const footprint = baseFootprint();
+  const xScale = footprint.z === 0 ? 1 : footprint.x / footprint.z;
+  const zScale = footprint.x === 0 ? 1 : footprint.z / footprint.x;
   vector.x = z * xScale;
   vector.z = x * zScale;
 }
