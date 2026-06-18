@@ -2,10 +2,12 @@ import "./style.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { SeededRandom, clamp, randomSeed } from "./random";
 
 type PointNode = {
   position: THREE.Vector3;
   polarity: THREE.Vector3;
+  origin?: THREE.Vector3;
 };
 
 type AlgoTriangle = {
@@ -53,6 +55,7 @@ type Params = {
   expansiveABVertical: boolean;
   showPointNormals: boolean;
   contractToExpansionCenters: boolean;
+  randomSeed: number;
 };
 
 type View = {
@@ -94,7 +97,8 @@ const params: Params = {
   showContract: false,
   expansiveABVertical: true,
   showPointNormals: false,
-  contractToExpansionCenters: true
+  contractToExpansionCenters: true,
+  randomSeed: 1841919
 };
 
 const targetCount = document.querySelector<HTMLElement>("#targetCount");
@@ -181,6 +185,15 @@ function buildControls(): void {
     checkbox("contractToExpansionCenters", "Contract to expand centers")
   ]);
 
+  addFieldset("Target Randomizer", [
+    readout("Seed", String(params.randomSeed)),
+    button("Random target-like", () => {
+      randomizeTargetLike();
+      buildControls();
+      rebuildLab();
+    })
+  ]);
+
   addFieldset("Expand EC", [
     slider("posA", "Pos A", 0, 1, 0.01),
     slider("ampA", "Amp A", -0.8, 0.8, 0.01),
@@ -230,7 +243,8 @@ function buildControls(): void {
         expansiveABVertical: true,
         showPointNormals: false,
         contractToExpansionCenters: true,
-        showContract: false
+        showContract: false,
+        randomSeed: 1841919
       });
       buildControls();
       rebuildLab();
@@ -316,6 +330,63 @@ function button(labelText: string, handler: () => void): HTMLElement {
   return buttonEl;
 }
 
+function readout(labelText: string, value: string): HTMLElement {
+  const label = document.createElement("label");
+  const name = document.createElement("span");
+  const output = document.createElement("output");
+  name.textContent = labelText;
+  output.textContent = value;
+  label.append(name, output);
+  return label;
+}
+
+function randomizeTargetLike(seed = randomSeed()): void {
+  const rng = new SeededRandom(seed);
+  const base = roundTo(rng.range(36, 44), 1);
+  Object.assign(params, {
+    topology: "quad",
+    massH: Math.round(rng.range(48, 66)),
+    massD: base,
+    massW: base,
+    recursion: rng.int(4, 5),
+    recursion2: rng.int(1, 2),
+    divThreshold: roundTo(rng.range(1.8, 3.2), 0.1),
+    posA: randomNear(rng, 0.5, 0.05),
+    ampA: randomNear(rng, 0.66, 0.1),
+    rotA: randomNear(rng, 0.5, 0.06),
+    posB: randomNear(rng, 0.5, 0.05),
+    ampB: randomNear(rng, 0.13, 0.08),
+    rotB: randomNear(rng, 0.5, 0.06),
+    posC: randomNear(rng, 0.54, 0.06),
+    ampC: randomNear(rng, 0.42, 0.12),
+    rotC: randomNear(rng, 0.55, 0.07),
+    conPosA: randomNear(rng, 0.5, 0.04),
+    conAmpA: randomNear(rng, 0.1, 0.06, -0.02, 0.18),
+    conRotA: randomNear(rng, 0.5, 0.05),
+    conPosB: randomNear(rng, 0.5, 0.04),
+    conAmpB: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
+    conRotB: randomNear(rng, 0.5, 0.05),
+    conPosC: randomNear(rng, 0.5, 0.04),
+    conAmpC: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
+    conRotC: randomNear(rng, 0.5, 0.05),
+    topPos: randomNear(rng, 0.5, 0.05),
+    topAmp: randomNear(rng, -0.72, 0.08, -0.8, -0.55),
+    topRot: randomNear(rng, 0.5, 0.06),
+    showContract: false,
+    expansiveABVertical: true,
+    contractToExpansionCenters: true,
+    randomSeed: seed
+  });
+}
+
+function randomNear(rng: SeededRandom, center: number, radius: number, min = 0, max = 1): number {
+  return roundTo(clamp(center + rng.signed(radius), min, max), 0.01);
+}
+
+function roundTo(value: number, step: number): number {
+  return Math.round(value / step) * step;
+}
+
 function formatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
@@ -395,10 +466,11 @@ function makeSeed(a: PointNode, b: PointNode, c: PointNode): AlgoTriangle {
   return { a, b, c, state: true, dirA: false, dirB: false, dirC: false };
 }
 
-function point(position: THREE.Vector3, polarity: THREE.Vector3): PointNode {
+function point(position: THREE.Vector3, polarity: THREE.Vector3, origin?: THREE.Vector3): PointNode {
   return {
     position,
-    polarity: polarity.clone().normalize()
+    polarity: polarity.clone().normalize(),
+    origin: origin?.clone()
   };
 }
 
@@ -500,7 +572,7 @@ function edgeConstruct(
     : polarity
       ? expandSettings(edge, dir)
       : contractSettings(edge, dir);
-  const origin = a.position.clone().lerp(b.position, settings.pos);
+  const origin = edgeOrigin(a, b, settings.pos);
   const pol =
     polarity && !crown && params.expansiveABVertical && (edge === "A" || edge === "B")
       ? new THREE.Vector3(0, 1, 0)
@@ -512,13 +584,14 @@ function edgeConstruct(
     if (toTarget.lengthSq() > 0.000001) {
       const directionToTarget = toTarget.normalize();
       const sign = settings.amp <= 0 ? 1 : -1;
-      const displacement = directionToTarget.multiplyScalar(a.position.distanceTo(b.position) * Math.abs(settings.amp) * sign);
-      return point(origin.add(displacement), directionToTarget.multiplyScalar(sign));
+      const signedDirection = directionToTarget.clone().multiplyScalar(sign);
+      const displacement = signedDirection.clone().multiplyScalar(a.position.distanceTo(b.position) * Math.abs(settings.amp));
+      return point(origin.clone().add(displacement), signedDirection, origin);
     }
   }
 
   const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * settings.amp);
-  return point(origin.add(displacement), pol);
+  return point(origin.clone().add(displacement), pol, origin);
 }
 
 function edgeConstructCached(
@@ -557,13 +630,17 @@ function sharedEdgeKey(
 
 function expansionCenterForEdge(a: PointNode, b: PointNode, edge: "A" | "B" | "C", dir: boolean): PointNode {
   const settings = expandSettings(edge, dir);
-  const origin = a.position.clone().lerp(b.position, settings.pos);
+  const origin = edgeOrigin(a, b, settings.pos);
   const pol =
     params.expansiveABVertical && (edge === "A" || edge === "B")
       ? new THREE.Vector3(0, 1, 0)
       : a.polarity.clone().lerp(b.polarity, settings.rot).normalize();
   const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * settings.amp);
-  return point(origin.add(displacement), pol);
+  return point(origin.clone().add(displacement), pol, origin);
+}
+
+function edgeOrigin(a: PointNode, b: PointNode, pos: number): THREE.Vector3 {
+  return a.position.clone().lerp(b.position, pos);
 }
 
 function expandSettings(edge: "A" | "B" | "C", dir: boolean): { pos: number; amp: number; rot: number } {
@@ -598,7 +675,8 @@ function drawEdgeOperation(base: AlgoTriangle): void {
 }
 
 function addEdgeMarker(group: THREE.Group, a: PointNode, b: PointNode, p: PointNode, color: number): void {
-  const origin = a.position.clone().lerp(b.position, 0.5);
+  const origin = p.origin ?? edgeOrigin(a, b, 0.5);
+  group.add(sphere(origin, Math.max(params.massH, params.massD) * 0.01, color));
   group.add(polyline([origin, p.position], color, 2));
   group.add(sphere(p.position, Math.max(params.massH, params.massD) * 0.018, color));
 }
