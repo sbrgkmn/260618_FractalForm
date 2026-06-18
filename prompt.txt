@@ -1,0 +1,424 @@
+Build an interactive 3D generative design application that creates abstract architectural massing through a triangular Koch-like fractal algorithm.
+
+The project should generate spiky, crystalline, Gothic, German Expressionist architectural forms. The visual mood should reference Bruno Taut, Wassili Luckhardt, Hans Scharoun, Wenzel Hablik, Alpine Architektur, crystalline glass architecture, and Gothic spires or buttresses. The result should feel like a computational crystal-cathedral massing study, not a generic terrain or plant fractal.
+
+Use the attached reference images only as a moodboard:
+1. A grayscale faceted spiky tower-like mass with recursive triangular spikes.
+2. Black-and-white German Expressionist architectural studies with folded mountain-like triangular surfaces.
+3. A blue-white crystalline architectural painting with jagged prismatic clusters.
+4. A pink Expressionist dome/mountain composition with arches, crystal forms, and utopian massing.
+
+Do not copy these images literally. Translate their formal language into a parametric 3D algorithm.
+
+TECH STACK
+
+Create a browser-based app using:
+
+- Vite
+- TypeScript
+- Three.js
+- lil-gui or dat.gui for UI controls
+- OrbitControls
+- Optional: earcut for triangulating irregular polygons
+- Optional exporters from Three.js examples: OBJExporter, STLExporter, GLTFExporter
+
+The app should run locally with:
+
+npm install
+npm run dev
+
+Organize code clearly:
+
+src/
+  main.ts
+  fractalPyramid.ts
+  ui.ts
+  exporters.ts
+  types.ts
+  random.ts
+  presets.ts
+
+CORE GEOMETRY CONCEPT
+
+The algorithm must start from a pyramidal configuration with four triangular faces.
+
+Use a square pyramid as the default seed:
+
+- Coordinate system: Three.js Y-up.
+- Base square centered at origin on y = 0.
+- Apex on the vertical Y axis.
+- Four triangular side faces:
+  face 0: apex, base corner 0, base corner 1
+  face 1: apex, base corner 1, base corner 2
+  face 2: apex, base corner 2, base corner 3
+  face 3: apex, base corner 3, base corner 0
+
+The base cap should be optional. Default: no base cap, so the form reads as a crystalline shell or architectural mass.
+
+Each initial triangle should act as a recursive field. The three edges of every triangle are treated as “axes.” Each axis should be broken using a Koch curve-like operation. The recursion should happen on triangular faces, not on a heightfield, voxel grid, sphere, or terrain.
+
+TRIANGULAR KOCH-LIKE RECURSION
+
+Implement a recursive function:
+
+generateFractalTriangle(
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  c: THREE.Vector3,
+  level: number,
+  params: FractalParams,
+  rng: SeededRandom
+): Triangle[]
+
+For each triangular face:
+
+1. Compute face properties:
+   - centroid g
+   - outward normal n
+   - average edge length
+   - local 2D coordinate frame for the triangle
+
+2. For each edge of the triangle, apply a Koch-like break:
+   For edge P to Q:
+   - p1 = lerp(P, Q, splitRatio)
+   - p2 = lerp(P, Q, 1.0 - splitRatio)
+   - middle segment = p2 - p1
+   - Create a Koch peak k by rotating the middle segment in the local triangle plane by kochAngle.
+   - Choose the peak direction that points away from the triangle centroid in local 2D coordinates.
+   - Lift the peak in 3D using:
+     k3D = kPlanar
+           + faceNormal * normalExtrusion * edgeLength * levelDecay
+           + globalUp * verticalBias * edgeLength * levelDecay
+           + radialOut * buttressBias * edgeLength * levelDecay
+   - Add controlled random variation to angle, height, split, and radial direction, using a deterministic seeded random generator.
+
+The boundary of the modified triangle should become a 12-point polygon:
+
+A,
+AB_p1,
+AB_peak,
+AB_p2,
+B,
+BC_p1,
+BC_peak,
+BC_p2,
+C,
+CA_p1,
+CA_peak,
+CA_p2
+
+3. Convert this 12-point polygon into triangular facets.
+
+Provide two triangulation modes:
+
+A. "Flat Patch Mode"
+   - Use earcut or another triangulation method in local 2D.
+   - Map triangulated vertices back into 3D.
+   - This creates a Koch-broken triangular surface.
+
+B. "Spire Fan Mode"
+   - Default mode.
+   - Compute a raised central point:
+     center = centroid
+              + faceNormal * centralLift * avgEdgeLength * levelDecay
+              + globalUp * centralSpireBias * avgEdgeLength * levelDecay
+              + radialOut * centralButtressBias * avgEdgeLength * levelDecay
+   - Create fan triangles from each boundary edge to this raised center.
+   - This creates Gothic spires, folded facets, and crystalline peaks.
+
+4. Recurse on the generated triangles until level == recursionDepth.
+
+5. Stop recursion if:
+   - level reaches recursionDepth
+   - triangle area is below minArea
+   - total triangle count exceeds maxTriangles
+
+IMPORTANT: The recursion should visually read as a Koch-like breaking of triangular axes, then an architectural extrusion/folding of those broken axes into faceted mass.
+
+AESTHETIC GOALS
+
+The generated forms should:
+
+- Start legibly as a four-faced pyramid.
+- Become increasingly jagged and crystalline as recursion depth increases.
+- Produce vertical spires, needle-like pinnacles, sharp ridges, and buttress-like side projections.
+- Maintain an architectural massing quality rather than becoming a random noisy blob.
+- Suggest Gothic architecture through progressive upward clustering, spires, folded rib-like edges, and buttress-like radial supports.
+- Suggest German Expressionist crystalline architecture through faceted, jagged, non-orthogonal surfaces.
+- Work well in monochrome white, gray, clay, or translucent glass material.
+- Have strong silhouette value.
+
+PARAMETRIC CONTROLS
+
+Create a GUI with the following controls:
+
+General:
+- recursionDepth: integer, 0 to 5, default 3
+- baseSize: float, default 8
+- pyramidHeight: float, default 12
+- seed: integer
+- randomize button
+- regenerate button
+- reset defaults button
+- symmetryMode: boolean, default true
+- capBase: boolean, default false
+
+Koch behavior:
+- splitRatio: 0.20 to 0.45, default 0.333
+- kochAngle: 20 to 85 degrees, default 60
+- normalExtrusion: 0 to 2.5, default 0.45
+- verticalBias: 0 to 3.0, default 1.1
+- buttressBias: -1.5 to 1.5, default 0.35
+- centralLift: 0 to 3.0, default 0.85
+- centralSpireBias: 0 to 4.0, default 1.4
+- centralButtressBias: -2.0 to 2.0, default 0.25
+- levelDecay: 0.25 to 0.95, default 0.62
+
+Randomness:
+- randomness: 0 to 1, default 0.25
+- angleJitter: 0 to 30 degrees, default 8
+- heightJitter: 0 to 1, default 0.25
+- splitJitter: 0 to 0.15, default 0.03
+- asymmetry: 0 to 1, default 0.2
+- randomizeSeed button
+- randomizeParameters button
+
+Architectural shaping:
+- gothicVerticality: 0 to 3, default 1.5
+- spireTaper: 0 to 1, default 0.45
+- ridgeSharpness: 0 to 1, default 0.8
+- buttressSpread: 0 to 3, default 0.9
+- axisAttractorStrength: 0 to 1, default 0.35
+- radialClusterStrength: 0 to 1, default 0.25
+- terraceQuantization: 0 to 1, default 0.0
+
+Mesh controls:
+- triangulationMode: "spireFan" or "flatPatch"
+- smoothNormals: boolean, default false
+- doubleSidedMaterial: boolean, default true
+- wireframe: boolean, default false
+- showEdges: boolean, default true
+- showAxes: boolean, default false
+- maxTriangles: default 250000
+
+Material and display:
+- materialMode: "matte white", "gray clay", "black silhouette", "translucent glass"
+- background: light gray, dark gray, black, white
+- ambientLightIntensity
+- directionalLightIntensity
+- autoRotate: boolean
+- camera preset buttons: front, perspective, top, axonometric
+
+Export:
+- Export OBJ
+- Export STL
+- Export GLTF
+- Export PNG screenshot
+- Export JSON preset
+- Import JSON preset
+
+RANDOMIZER
+
+Implement a deterministic seeded random system.
+
+Use a simple seeded PRNG, for example mulberry32.
+
+The Randomize button should:
+- Change the seed.
+- Randomize parameters within controlled aesthetic ranges.
+- Avoid unusable outputs.
+- Keep recursionDepth between 2 and 4 by default.
+- Favor vertical crystalline forms.
+- Favor sharp spires and buttress-like lateral supports.
+- Avoid overly noisy fur-like surfaces.
+
+Add curated presets:
+
+1. "Taut Crystal"
+   - symmetrical
+   - high verticality
+   - moderate centralLift
+   - translucent or white material
+
+2. "Luckhardt Fold"
+   - stronger planar folding
+   - lower verticality
+   - strong buttressBias
+   - angular folded surfaces
+
+3. "Gothic Thorn"
+   - high centralSpireBias
+   - high gothicVerticality
+   - sharp ridge
+   - tall progressive pinnacles
+
+4. "Alpine Glass"
+   - larger base
+   - mountain-like crystalline clusters
+   - moderate asymmetry
+   - glass material
+
+5. "Monolith Cathedral"
+   - very tall apex
+   - dense recursive spires
+   - dark background
+   - white faceted mass
+
+AXIS ATTRACTOR
+
+Because the design should feel architectural and not purely chaotic, implement an optional axis-attractor system.
+
+Define major axes:
+- The vertical central axis from base center to apex.
+- Four diagonal/ridge axes from each base corner to the apex.
+- Four face axes from each base edge midpoint to the apex.
+
+When creating new peak points, allow the point to be slightly attracted toward the nearest major axis. Use axisAttractorStrength as the blend value.
+
+Pseudo logic:
+
+function attractToNearestAxis(point, axes, strength) {
+  nearest = closestPointOnAnyAxis(point, axes)
+  return lerp(point, nearest, strength)
+}
+
+Only apply this after the Koch peak and extrusion have been computed. This should make the recursive spires feel aligned with a hidden Gothic/crystalline skeleton.
+
+SYMMETRY
+
+Implement symmetryMode.
+
+If symmetryMode is true:
+- The four initial pyramid faces should use the same random sequence at each recursion level.
+- This preserves a four-sided architectural organization while still allowing local variation.
+
+If symmetryMode is false:
+- Each face can use independent seeded randomness.
+- This creates more turbulent German Expressionist asymmetry.
+
+GEOMETRY QUALITY
+
+The generated mesh should:
+
+- Use BufferGeometry.
+- Avoid NaN vertices.
+- Avoid zero-area triangles.
+- Merge or index vertices if useful, but do not overcomplicate.
+- Recompute normals after mesh creation.
+- Use flatShading by default.
+- Show edge lines using EdgesGeometry or LineSegments.
+- Display triangle count in the UI.
+- Warn or clamp when recursionDepth and maxTriangles would produce too many triangles.
+
+PERFORMANCE
+
+The app should update interactively.
+
+- Debounce GUI changes by around 100 ms.
+- Dispose old geometries and materials properly.
+- Keep depth 5 as the practical maximum.
+- Display triangle count and generation time.
+- Do not freeze the browser when randomizing.
+
+VISUAL COMPOSITION
+
+Default scene:
+
+- Orthographic or perspective camera, user selectable.
+- Camera looking at the form from a slight low angle.
+- OrbitControls enabled.
+- Default material: matte white faceted material.
+- Background: medium gray.
+- Lighting: ambient plus one main directional light and one soft fill.
+- Shadows optional.
+
+The first load should immediately show a compelling crystalline Gothic pyramid mass, not an empty scene.
+
+ACCEPTANCE CRITERIA
+
+The finished app is successful if:
+
+1. At recursionDepth 0, I see a simple four-faced pyramid.
+2. At recursionDepth 1, each triangular face has Koch-like broken edges and raised triangular facets.
+3. At recursionDepth 2 to 4, the form develops into a spiky crystalline architectural mass.
+4. The silhouette includes progressive spires, buttress-like projections, folded triangular ribs, and jagged crystal ridges.
+5. The UI allows me to tune recursion, height, verticality, randomness, spire taper, split ratio, and material.
+6. The Randomize button generates multiple distinct but related architectural forms.
+7. The code is clean, commented, modular, and easy to extend.
+8. Export to OBJ and STL works.
+9. The generated result is an actual 3D mesh, not a shader trick or 2D drawing.
+10. The algorithm is based on recursive triangular Koch-like operations starting from a four-triangle pyramid.
+
+IMPLEMENTATION NOTES
+
+Please implement the project fully, not just pseudocode.
+
+Use TypeScript types:
+
+type Triangle = {
+  a: THREE.Vector3
+  b: THREE.Vector3
+  c: THREE.Vector3
+  level: number
+}
+
+type FractalParams = {
+  recursionDepth: number
+  baseSize: number
+  pyramidHeight: number
+  splitRatio: number
+  kochAngle: number
+  normalExtrusion: number
+  verticalBias: number
+  buttressBias: number
+  centralLift: number
+  centralSpireBias: number
+  centralButtressBias: number
+  levelDecay: number
+  randomness: number
+  angleJitter: number
+  heightJitter: number
+  splitJitter: number
+  asymmetry: number
+  gothicVerticality: number
+  spireTaper: number
+  ridgeSharpness: number
+  buttressSpread: number
+  axisAttractorStrength: number
+  radialClusterStrength: number
+  terraceQuantization: number
+  triangulationMode: "spireFan" | "flatPatch"
+  symmetryMode: boolean
+  capBase: boolean
+  maxTriangles: number
+}
+
+The main geometry pipeline should be:
+
+createSeedPyramid(params)
+  -> returns four triangular faces
+
+generateFractalMesh(params, seed)
+  -> recursively subdivides each face
+  -> collects triangles
+  -> builds BufferGeometry
+
+updateScene()
+  -> regenerates mesh
+  -> updates material, edges, stats
+
+randomize()
+  -> changes seed and parameters within aesthetic ranges
+  -> regenerates mesh
+
+exportMesh(format)
+  -> OBJ, STL, GLTF
+
+Include a README explaining:
+- How to run the project.
+- What the algorithm does.
+- What each major parameter controls.
+- How to export meshes.
+- Suggested parameter ranges for architectural results.
+
+Please create the full codebase.

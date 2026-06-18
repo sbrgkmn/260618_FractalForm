@@ -1,0 +1,22 @@
+{
+  "name": "fractal-form",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/typescript/bin/tsc && node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview"
+  },
+  "dependencies": {
+    "earcut": "^3.0.1",
+    "lil-gui": "^0.20.0",
+    "three": "^0.165.0"
+  },
+  "devDependencies": {
+    "@types/earcut": "^3.0.0",
+    "@types/three": "^0.184.1",
+    "typescript": "^5.4.5",
+    "vite": "^8.0.16"
+  }
+}

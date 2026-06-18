@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fractal Form Lab</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app">
+      <main id="labGrid">
+        <section class="viewPanel">
+          <header>Target_4 reference</header>
+          <canvas id="targetCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>EC edge construction</header>
+          <canvas id="edgeCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>One-step subdivision</header>
+          <canvas id="subdivisionCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Recursive preview</header>
+          <canvas id="recursiveCanvas"></canvas>
+        </section>
+      </main>
+      <aside id="controlPanel">
+        <div class="brand">
+          <span>Triangle Lab</span>
+          <small>old project EC/subdivision rules</small>
+        </div>
+        <div id="stats">
+          <div><span>Recursive triangles</span><strong id="triangleCount">0</strong></div>
+          <div><span>Target triangles</span><strong id="targetCount">0</strong></div>
+        </div>
+        <form id="controls"></form>
+        <p id="warning"></p>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
