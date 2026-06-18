@@ -28,6 +28,7 @@ type IndexedMesh = {
   faces: MeshFace[];
   fixed: Set<number>;
 };
+type SymmetryTransform = "identity" | "mirror" | "rotate" | "rotateMirror";
 
 type Params = {
   topology: "single" | "double" | "quad";
@@ -452,12 +453,15 @@ function loadTarget(): void {
 
 function rebuildLab(): void {
   const base = baseTriangle();
-  const seeds = initialTopology();
-  const oneStepCache: EdgeCache = new Map();
-  const oneStep = seeds.flatMap((triangle) => subdivideOnce(triangle, !params.showContract, oneStepCache, 0));
-  const recursiveTriangles: AlgoTriangle[] = [];
-  const recursiveCache: EdgeCache = new Map();
-  for (const seed of seeds) subdivideRecursive(seed, 0, true, recursiveTriangles, recursiveCache);
+  const transforms = topologyTransforms();
+  const seeds = transforms.map((transform) => transformTriangle(base, transform));
+  const seedOneStep = subdivideOnce(base, !params.showContract, new Map(), 0);
+  const oneStep = transforms.flatMap((transform) => seedOneStep.map((triangle) => transformTriangle(triangle, transform)));
+  const seedRecursiveTriangles: AlgoTriangle[] = [];
+  subdivideRecursive(base, 0, true, seedRecursiveTriangles, new Map());
+  const recursiveTriangles = transforms.flatMap((transform) =>
+    seedRecursiveTriangles.map((triangle) => transformTriangle(triangle, transform))
+  );
   const refinedTriangles = refineRecursiveTriangles(recursiveTriangles);
 
   drawEdgeOperation(base);
@@ -467,29 +471,61 @@ function rebuildLab(): void {
 }
 
 function baseTriangle(): AlgoTriangle {
-  return initialTopology()[0];
+  return makeSeed(
+    point(new THREE.Vector3(-params.massD, 0, params.massW), new THREE.Vector3(-1, 0, 1)),
+    point(new THREE.Vector3(0, params.massH, 0), new THREE.Vector3(0, 1, 0)),
+    point(new THREE.Vector3(params.massD, 0, params.massW), new THREE.Vector3(1, 0, 1))
+  );
 }
 
 function initialTopology(): AlgoTriangle[] {
-  const apex = point(new THREE.Vector3(0, params.massH, 0), new THREE.Vector3(0, 1, 0));
-  const corners = [
-    point(new THREE.Vector3(-params.massD, 0, -params.massW), new THREE.Vector3(-1, 0, -1)),
-    point(new THREE.Vector3(params.massD, 0, -params.massW), new THREE.Vector3(1, 0, -1)),
-    point(new THREE.Vector3(params.massD, 0, params.massW), new THREE.Vector3(1, 0, 1)),
-    point(new THREE.Vector3(-params.massD, 0, params.massW), new THREE.Vector3(-1, 0, 1))
-  ];
+  const base = baseTriangle();
+  return topologyTransforms().map((transform) => transformTriangle(base, transform));
+}
 
-  // Alternate face orientation so every shared pyramid rib uses the same local edge rule on both sides.
-  const faces = [
-    makeSeed(corners[3], apex, corners[2]),
-    makeSeed(corners[1], apex, corners[2]),
-    makeSeed(corners[1], apex, corners[0]),
-    makeSeed(corners[3], apex, corners[0])
-  ];
+function topologyTransforms(): SymmetryTransform[] {
+  if (params.topology === "single") return ["identity"];
+  if (params.topology === "double") return ["identity", "mirror"];
+  return ["identity", "mirror", "rotate", "rotateMirror"];
+}
 
-  if (params.topology === "single") return [faces[0]];
-  if (params.topology === "double") return [faces[0], faces[1]];
-  return faces;
+function transformTriangle(triangle: AlgoTriangle, transform: SymmetryTransform): AlgoTriangle {
+  return {
+    a: transformPointNode(triangle.a, transform),
+    b: transformPointNode(triangle.b, transform),
+    c: transformPointNode(triangle.c, transform),
+    state: triangle.state,
+    dirA: triangle.dirA,
+    dirB: triangle.dirB,
+    dirC: triangle.dirC
+  };
+}
+
+function transformPointNode(pointNode: PointNode, transform: SymmetryTransform): PointNode {
+  return point(
+    transformVector(pointNode.position, transform, false),
+    transformVector(pointNode.polarity, transform, true),
+    pointNode.origin ? transformVector(pointNode.origin, transform, false) : undefined
+  );
+}
+
+function transformVector(vector: THREE.Vector3, transform: SymmetryTransform, normalize: boolean): THREE.Vector3 {
+  const transformed = vector.clone();
+  if (transform === "mirror" || transform === "rotateMirror") mirrorDiagonal(transformed);
+  if (transform === "rotate" || transform === "rotateMirror") {
+    transformed.x *= -1;
+    transformed.z *= -1;
+  }
+  return normalize && transformed.lengthSq() > 0 ? transformed.normalize() : transformed;
+}
+
+function mirrorDiagonal(vector: THREE.Vector3): void {
+  const x = vector.x;
+  const z = vector.z;
+  const xScale = params.massW === 0 ? 1 : params.massD / params.massW;
+  const zScale = params.massD === 0 ? 1 : params.massW / params.massD;
+  vector.x = z * xScale;
+  vector.z = x * zScale;
 }
 
 function makeSeed(a: PointNode, b: PointNode, c: PointNode): AlgoTriangle {
