@@ -21,9 +21,19 @@ type AlgoTriangle = {
 };
 
 type EdgeCache = Map<string, PointNode>;
+type MeshFace = [number, number, number];
+type RenderTriangle = { a: THREE.Vector3; b: THREE.Vector3; c: THREE.Vector3 };
+type IndexedMesh = {
+  vertices: THREE.Vector3[];
+  faces: MeshFace[];
+  fixed: Set<number>;
+};
 
 type Params = {
   topology: "single" | "double" | "quad";
+  refineMode: "off" | "smooth" | "fixedCorners";
+  refineSteps: number;
+  refineAmount: number;
   massH: number;
   massD: number;
   massW: number;
@@ -67,6 +77,9 @@ type View = {
 
 const params: Params = {
   topology: "quad",
+  refineMode: "fixedCorners",
+  refineSteps: 1,
+  refineAmount: 0.08,
   massH: 51,
   massD: 40,
   massW: 40,
@@ -179,6 +192,16 @@ function buildControls(): void {
     slider("divThreshold", "Min edge", 0, 12, 0.1)
   ]);
 
+  addFieldset("Surface Refinement", [
+    select("refineMode", "Mode", [
+      ["off", "off"],
+      ["smooth", "smooth all"],
+      ["fixedCorners", "fixed corners"]
+    ]),
+    slider("refineSteps", "Steps", 0, 3, 1),
+    slider("refineAmount", "Inflate", -0.6, 0.6, 0.01)
+  ]);
+
   addFieldset("Rule Toggles", [
     checkbox("expansiveABVertical", "A/B vertical displacement"),
     checkbox("showPointNormals", "Show point normals"),
@@ -244,6 +267,9 @@ function buildControls(): void {
         showPointNormals: false,
         contractToExpansionCenters: true,
         showContract: false,
+        refineMode: "fixedCorners",
+        refineSteps: 1,
+        refineAmount: 0.08,
         randomSeed: 1841919
       });
       buildControls();
@@ -351,6 +377,9 @@ function randomizeTargetLike(seed = randomSeed()): void {
     recursion: rng.int(4, 5),
     recursion2: rng.int(1, 2),
     divThreshold: roundTo(rng.range(1.8, 3.2), 0.1),
+    refineMode: rng.next() > 0.35 ? "fixedCorners" : "smooth",
+    refineSteps: rng.int(1, 2),
+    refineAmount: randomNear(rng, 0.08, 0.08, -0.08, 0.18),
     posA: randomNear(rng, 0.5, 0.05),
     ampA: randomNear(rng, 0.66, 0.1),
     rotA: randomNear(rng, 0.5, 0.06),
@@ -429,11 +458,12 @@ function rebuildLab(): void {
   const recursiveTriangles: AlgoTriangle[] = [];
   const recursiveCache: EdgeCache = new Map();
   for (const seed of seeds) subdivideRecursive(seed, 0, true, recursiveTriangles, recursiveCache);
+  const refinedTriangles = refineRecursiveTriangles(recursiveTriangles);
 
   drawEdgeOperation(base);
   drawSubdivision(seeds, oneStep);
-  drawRecursive(recursiveTriangles);
-  if (triangleCount) triangleCount.textContent = recursiveTriangles.length.toLocaleString();
+  drawRecursive(refinedTriangles, recursiveTriangles);
+  if (triangleCount) triangleCount.textContent = refinedTriangles.length.toLocaleString();
 }
 
 function baseTriangle(): AlgoTriangle {
@@ -693,12 +723,159 @@ function drawSubdivision(base: AlgoTriangle[], children: AlgoTriangle[]): void {
   frame(subdivisionView, subdivisionGroup, new THREE.Vector3(0.8, 0.45, 1));
 }
 
-function drawRecursive(triangles: AlgoTriangle[]): void {
+function refineRecursiveTriangles(triangles: AlgoTriangle[]): RenderTriangle[] {
+  let mesh = indexedMeshFromAlgo(triangles);
+  if (params.refineMode !== "off") {
+    for (let step = 0; step < params.refineSteps; step++) {
+      mesh = subdivideMesh(mesh, params.refineMode, params.refineAmount);
+      mesh = smoothMesh(mesh, params.refineMode, params.refineAmount);
+    }
+  }
+  return renderTrianglesFromMesh(mesh);
+}
+
+function indexedMeshFromAlgo(triangles: AlgoTriangle[]): IndexedMesh {
+  const vertices: THREE.Vector3[] = [];
+  const faces: MeshFace[] = [];
+  const indexByKey = new Map<string, number>();
+
+  const getIndex = (position: THREE.Vector3): number => {
+    const key = pointKey(position);
+    const existing = indexByKey.get(key);
+    if (existing !== undefined) return existing;
+    const index = vertices.length;
+    vertices.push(position.clone());
+    indexByKey.set(key, index);
+    return index;
+  };
+
+  for (const triangle of triangles) {
+    faces.push([getIndex(triangle.a.position), getIndex(triangle.b.position), getIndex(triangle.c.position)]);
+  }
+
+  return {
+    vertices,
+    faces,
+    fixed: new Set(vertices.map((_, index) => index))
+  };
+}
+
+function subdivideMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: number): IndexedMesh {
+  const vertices = mesh.vertices.map((vertex) => vertex.clone());
+  const faces: MeshFace[] = [];
+  const fixed = new Set(mesh.fixed);
+  const midpointByEdge = new Map<string, number>();
+  const normals = meshVertexNormals(mesh);
+
+  const midpoint = (ia: number, ib: number): number => {
+    const key = ia < ib ? `${ia}|${ib}` : `${ib}|${ia}`;
+    const existing = midpointByEdge.get(key);
+    if (existing !== undefined) return existing;
+
+    const a = mesh.vertices[ia];
+    const b = mesh.vertices[ib];
+    const position = a.clone().add(b).multiplyScalar(0.5);
+    if (mode === "fixedCorners" && amount !== 0) {
+      const normal = normals[ia].clone().add(normals[ib]).normalize();
+      position.addScaledVector(normal, a.distanceTo(b) * amount * 0.35);
+    }
+    const index = vertices.length;
+    vertices.push(position);
+    midpointByEdge.set(key, index);
+    return index;
+  };
+
+  for (const [ia, ib, ic] of mesh.faces) {
+    const iab = midpoint(ia, ib);
+    const ibc = midpoint(ib, ic);
+    const ica = midpoint(ic, ia);
+    faces.push([ia, iab, ica], [iab, ib, ibc], [ica, ibc, ic], [iab, ibc, ica]);
+  }
+
+  return { vertices, faces, fixed };
+}
+
+function smoothMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: number): IndexedMesh {
+  const neighbors = meshNeighbors(mesh);
+  const normals = meshVertexNormals(mesh);
+  const preserveFixed = mode === "fixedCorners";
+  const smoothStrength = mode === "smooth" ? 0.34 : 0.16;
+  const normalStrength = mode === "smooth" ? 0.18 : 0.08;
+  const vertices = mesh.vertices.map((vertex, index) => {
+    if (preserveFixed && mesh.fixed.has(index)) return vertex.clone();
+    const linked = neighbors[index];
+    if (!linked || linked.size === 0) return vertex.clone();
+
+    const average = new THREE.Vector3();
+    let averageEdge = 0;
+    for (const neighbor of linked) {
+      average.add(mesh.vertices[neighbor]);
+      averageEdge += vertex.distanceTo(mesh.vertices[neighbor]);
+    }
+    average.multiplyScalar(1 / linked.size);
+    averageEdge /= linked.size;
+
+    return vertex
+      .clone()
+      .lerp(average, smoothStrength)
+      .addScaledVector(normals[index], averageEdge * amount * normalStrength);
+  });
+
+  return {
+    vertices,
+    faces: mesh.faces.map((face) => [...face] as MeshFace),
+    fixed: new Set(mesh.fixed)
+  };
+}
+
+function meshNeighbors(mesh: IndexedMesh): Set<number>[] {
+  const neighbors = mesh.vertices.map(() => new Set<number>());
+  for (const [ia, ib, ic] of mesh.faces) {
+    neighbors[ia].add(ib).add(ic);
+    neighbors[ib].add(ia).add(ic);
+    neighbors[ic].add(ia).add(ib);
+  }
+  return neighbors;
+}
+
+function meshVertexNormals(mesh: IndexedMesh): THREE.Vector3[] {
+  const center = meshCenter(mesh.vertices);
+  const normals = mesh.vertices.map(() => new THREE.Vector3());
+  for (const [ia, ib, ic] of mesh.faces) {
+    const a = mesh.vertices[ia];
+    const b = mesh.vertices[ib];
+    const c = mesh.vertices[ic];
+    const normal = b.clone().sub(a).cross(c.clone().sub(a));
+    if (normal.lengthSq() === 0) continue;
+    const faceCenter = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+    if (normal.dot(faceCenter.sub(center)) < 0) normal.negate();
+    normals[ia].add(normal);
+    normals[ib].add(normal);
+    normals[ic].add(normal);
+  }
+  return normals.map((normal) => (normal.lengthSq() > 0 ? normal.normalize() : new THREE.Vector3(0, 1, 0)));
+}
+
+function meshCenter(vertices: THREE.Vector3[]): THREE.Vector3 {
+  const center = new THREE.Vector3();
+  for (const vertex of vertices) center.add(vertex);
+  return vertices.length > 0 ? center.multiplyScalar(1 / vertices.length) : center;
+}
+
+function renderTrianglesFromMesh(mesh: IndexedMesh): RenderTriangle[] {
+  return mesh.faces.map(([ia, ib, ic]) => ({
+    a: mesh.vertices[ia],
+    b: mesh.vertices[ib],
+    c: mesh.vertices[ic]
+  }));
+}
+
+function drawRecursive(triangles: RenderTriangle[], debugTriangles: AlgoTriangle[]): void {
   clearGroup(recursiveGroup);
-  const geometry = triangleGeometry(triangles);
+  const geometry = renderTriangleGeometry(triangles);
   recursiveGroup.add(new THREE.Mesh(geometry, material(0xf2f0e8, true)));
   recursiveGroup.add(edgesFor(geometry, 0x111111, 0.35));
-  addTrianglePointDebug(recursiveGroup, triangles);
+  addTrianglePointDebug(recursiveGroup, debugTriangles);
   frame(recursiveView, recursiveGroup, new THREE.Vector3(0.85, 0.5, 1));
 }
 
@@ -753,6 +930,29 @@ function triangleGeometry(triangles: AlgoTriangle[]): THREE.BufferGeometry {
       tri.c.position.x,
       tri.c.position.y,
       tri.c.position.z
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+function renderTriangleGeometry(triangles: RenderTriangle[]): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const tri of triangles) {
+    positions.push(
+      tri.a.x,
+      tri.a.y,
+      tri.a.z,
+      tri.b.x,
+      tri.b.y,
+      tri.b.z,
+      tri.c.x,
+      tri.c.y,
+      tri.c.z
     );
   }
   const geometry = new THREE.BufferGeometry();
