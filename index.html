@@ -10,20 +10,36 @@
     <div id="app">
       <main id="labGrid">
         <section class="viewPanel">
-          <header>Target_4 reference</header>
-          <canvas id="targetCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
           <header>EC edge construction</header>
           <canvas id="edgeCanvas"></canvas>
         </section>
         <section class="viewPanel">
-          <header>One-step subdivision</header>
-          <canvas id="subdivisionCanvas"></canvas>
+          <header>Division all A/B/C</header>
+          <canvas id="divisionAbcCanvas"></canvas>
         </section>
         <section class="viewPanel">
-          <header>Recursive preview</header>
-          <canvas id="recursiveCanvas"></canvas>
+          <header>Division single A</header>
+          <canvas id="divisionACanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Division single B</header>
+          <canvas id="divisionBCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Division single C</header>
+          <canvas id="divisionCCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Division pair A+B</header>
+          <canvas id="divisionAbCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Division pair B+C</header>
+          <canvas id="divisionBcCanvas"></canvas>
+        </section>
+        <section class="viewPanel">
+          <header>Division pair C+A</header>
+          <canvas id="divisionCaCanvas"></canvas>
         </section>
       </main>
       <aside id="controlPanel">
@@ -32,8 +48,7 @@
           <small>old project EC/subdivision rules</small>
         </div>
         <div id="stats">
-          <div><span>Recursive triangles</span><strong id="triangleCount">0</strong></div>
-          <div><span>Target triangles</span><strong id="targetCount">0</strong></div>
+          <div><span>Selected preview triangles</span><strong id="triangleCount">0</strong></div>
         </div>
         <form id="controls"></form>
         <p id="warning"></p>
