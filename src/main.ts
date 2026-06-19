@@ -70,6 +70,7 @@ type Params = {
   conPosC: number;
   conAmpC: number;
   conRotC: number;
+  edgeWeight: number;
   showContract: boolean;
   expansiveABVertical: boolean;
   showPointNormals: boolean;
@@ -123,6 +124,7 @@ const params: Params = {
   conPosC: 0.5,
   conAmpC: -0.1,
   conRotC: 0.5,
+  edgeWeight: 2,
   showContract: false,
   expansiveABVertical: true,
   showPointNormals: false,
@@ -235,7 +237,8 @@ function buildControls(): void {
   addFieldset("Rule Toggles", [
     checkbox("expansiveABVertical", "A/B vertical displacement"),
     checkbox("showPointNormals", "Show point normals"),
-    checkbox("contractToExpansionCenters", "Contract to expand centers")
+    checkbox("contractToExpansionCenters", "Contract to expand centers"),
+    slider("edgeWeight", "Edge weight", 1, 6, 1)
   ]);
 
   addFieldset("Target Randomizer", [
@@ -404,6 +407,7 @@ function resetParams(): void {
     conPosC: 0.5,
     conAmpC: -0.1,
     conRotC: 0.5,
+    edgeWeight: 2,
     expansiveABVertical: true,
     showPointNormals: false,
     contractToExpansionCenters: true,
@@ -448,6 +452,7 @@ function randomizeTargetLike(seed = randomSeed()): void {
     conPosC: randomNear(rng, 0.5, 0.04),
     conAmpC: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
     conRotC: randomNear(rng, 0.5, 0.05),
+    edgeWeight: params.edgeWeight,
     showContract: false,
     expansiveABVertical: true,
     contractToExpansionCenters: true,
@@ -779,7 +784,7 @@ function drawEdgeOperation(base: AlgoTriangle): void {
   const bc = edgeConstruct(base.b, base.c, "B", polarity, base.dirB);
   const ca = edgeConstruct(base.c, base.a, "C", polarity, base.dirC);
   edgeGroup.add(triangleMesh([base], 0xf2f0e8, 0.28));
-  edgeGroup.add(polyline([base.a.position, base.b.position, base.c.position, base.a.position], 0x111111, 1));
+  edgeGroup.add(polyline([base.a.position, base.b.position, base.c.position, base.a.position], 0x111111, params.edgeWeight));
   addEdgeMarker(edgeGroup, base.a, base.b, ab, 0xff4f4f);
   addEdgeMarker(edgeGroup, base.b, base.c, bc, 0x44d17a);
   addEdgeMarker(edgeGroup, base.c, base.a, ca, 0x4aa3ff);
@@ -790,7 +795,7 @@ function drawEdgeOperation(base: AlgoTriangle): void {
 function addEdgeMarker(group: THREE.Group, a: PointNode, b: PointNode, p: PointNode, color: number): void {
   const origin = p.origin ?? edgeOrigin(a, b, 0.5);
   group.add(sphere(origin, Math.max(params.massH, params.massD) * 0.01, color));
-  group.add(polyline([origin, p.position], color, 2));
+  group.add(polyline([origin, p.position], color, Math.max(2, params.edgeWeight)));
   group.add(sphere(p.position, Math.max(params.massH, params.massD) * 0.018, color));
 }
 
@@ -1061,11 +1066,34 @@ function material(color: number, doubleSide: boolean, opacity = 1): THREE.Materi
   });
 }
 
-function edgesFor(geometry: THREE.BufferGeometry, color: number, opacity: number): THREE.LineSegments {
-  return new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry, 16),
-    new THREE.LineBasicMaterial({ color, transparent: true, opacity })
-  );
+function edgesFor(geometry: THREE.BufferGeometry, color: number, opacity: number): THREE.Object3D {
+  const weight = Math.max(1, Math.round(params.edgeWeight));
+  const group = new THREE.Group();
+  const offsetScale = Math.max(params.massH, params.massD, params.massW) * 0.0007;
+  const offsets = edgeOffsets(weight, offsetScale);
+  for (const offset of offsets) {
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geometry, 16),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: Math.min(1, opacity + weight * 0.04), linewidth: weight })
+    );
+    edges.position.copy(offset);
+    group.add(edges);
+  }
+  return group;
+}
+
+function edgeOffsets(weight: number, scale: number): THREE.Vector3[] {
+  const offsets = [new THREE.Vector3()];
+  const pattern = [
+    new THREE.Vector3(1, 0, 0),
+    new THREE.Vector3(-1, 0, 0),
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(0, -1, 0),
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(0, 0, -1)
+  ];
+  for (let i = 1; i < weight; i++) offsets.push(pattern[(i - 1) % pattern.length].clone().multiplyScalar(scale));
+  return offsets;
 }
 
 function longestEdge(triangle: AlgoTriangle): number {
