@@ -36,10 +36,12 @@ type SymmetryTransform =
   | "mirrorX"
   | "mirrorZ"
   | "mirrorXZ";
+type DivisionMode = "abc" | "a" | "b" | "c" | "ab" | "bc" | "ca";
 
 type Params = {
   topology: "single" | "double" | "quad";
   axisSymmetry: boolean;
+  divisionMode: DivisionMode;
   refineMode: "off" | "smooth" | "fixedCorners";
   refineSteps: number;
   refineAmount: number;
@@ -86,6 +88,7 @@ type View = {
 const params: Params = {
   topology: "quad",
   axisSymmetry: true,
+  divisionMode: "abc",
   refineMode: "fixedCorners",
   refineSteps: 1,
   refineAmount: 0.12,
@@ -196,6 +199,15 @@ function buildControls(): void {
     slider("massH", "Mass H", 10, 80, 1),
     slider("massD", "Mass D", 5, 50, 1),
     ...(params.axisSymmetry ? [] : [slider("massW", "Mass W", 5, 50, 1)]),
+    select("divisionMode", "Division", [
+      ["abc", "all A/B/C"],
+      ["a", "single A"],
+      ["b", "single B"],
+      ["c", "single C"],
+      ["ab", "pair A+B"],
+      ["bc", "pair B+C"],
+      ["ca", "pair C+A"]
+    ]),
     slider("recursion", "Recursion", 0, 6, 1),
     slider("divThreshold", "Min edge", 0, 12, 0.1)
   ]);
@@ -355,6 +367,7 @@ function resetParams(): void {
   Object.assign(params, {
     topology: "quad",
     axisSymmetry: true,
+    divisionMode: "abc",
     refineMode: "fixedCorners",
     refineSteps: 1,
     refineAmount: 0.12,
@@ -398,6 +411,7 @@ function randomizeTargetLike(seed = randomSeed()): void {
   Object.assign(params, {
     topology: "quad",
     axisSymmetry: true,
+    divisionMode: "abc",
     massH: Math.round(rng.range(48, 66)),
     massD: base,
     massW: base,
@@ -584,11 +598,15 @@ function subdivideOnce(
   cache?: EdgeCache,
   level = 0
 ): AlgoTriangle[] {
-  const ab = edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level);
-  const bc = edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level);
-  const ca = edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level);
+  const activeEdges = activeDivisionEdges();
+  const splitA = activeEdges.has("A");
+  const splitB = activeEdges.has("B");
+  const splitC = activeEdges.has("C");
+  const ab = splitA ? edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level) : triangle.a;
+  const bc = splitB ? edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level) : triangle.b;
+  const ca = splitC ? edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level) : triangle.c;
 
-  return [
+  const children: AlgoTriangle[] = [
     {
       a: bc,
       b: ca,
@@ -597,8 +615,11 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    },
-    {
+    }
+  ];
+
+  if (splitA) {
+    children.push({
       a: triangle.a,
       b: ab,
       c: ca,
@@ -606,8 +627,11 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    },
-    {
+    });
+  }
+
+  if (splitB) {
+    children.push({
       a: ab,
       b: triangle.b,
       c: bc,
@@ -615,8 +639,11 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    },
-    {
+    });
+  }
+
+  if (splitC) {
+    children.push({
       a: ca,
       b: bc,
       c: triangle.c,
@@ -624,8 +651,20 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    }
-  ];
+    });
+  }
+
+  return children.filter((child) => triangleArea(child) > 0.000001);
+}
+
+function activeDivisionEdges(): Set<"A" | "B" | "C"> {
+  if (params.divisionMode === "a") return new Set(["A"]);
+  if (params.divisionMode === "b") return new Set(["B"]);
+  if (params.divisionMode === "c") return new Set(["C"]);
+  if (params.divisionMode === "ab") return new Set(["A", "B"]);
+  if (params.divisionMode === "bc") return new Set(["B", "C"]);
+  if (params.divisionMode === "ca") return new Set(["C", "A"]);
+  return new Set(["A", "B", "C"]);
 }
 
 function subdivideRecursive(
@@ -1047,6 +1086,14 @@ function longestEdge(triangle: AlgoTriangle): number {
     triangle.b.position.distanceTo(triangle.c.position),
     triangle.c.position.distanceTo(triangle.a.position)
   );
+}
+
+function triangleArea(triangle: AlgoTriangle): number {
+  return triangle.b.position
+    .clone()
+    .sub(triangle.a.position)
+    .cross(triangle.c.position.clone().sub(triangle.a.position))
+    .length() * 0.5;
 }
 
 function clearGroup(group: THREE.Group): void {
