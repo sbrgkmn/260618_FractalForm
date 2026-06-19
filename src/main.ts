@@ -40,7 +40,6 @@ type DivisionMode = "abc" | "a" | "b" | "c" | "ab" | "bc" | "ca";
 type GrowthSchedule = "uniform" | "ridgeFirst" | "verticalShell" | "targetLike";
 
 type Params = {
-  legacyTargetRules: boolean;
   topology: "single" | "double" | "quad";
   axisSymmetry: boolean;
   divisionMode: DivisionMode;
@@ -99,30 +98,29 @@ type StepPreview = {
 };
 
 const params: Params = {
-  legacyTargetRules: true,
-  topology: "double",
+  topology: "quad",
   axisSymmetry: true,
   divisionMode: "abc",
-  growthSchedule: "uniform",
-  axisAttraction: 0,
-  envelopeStrength: 0,
-  heightAmpBias: 0,
-  refineMode: "off",
-  refineSteps: 0,
-  refineAmount: 0,
-  refineRelax: 0,
-  refineEdgeInflate: 0,
-  refineFaceInflate: 0,
-  massH: 125,
-  massD: 35,
-  massW: 35,
-  recursion: 6,
-  divThreshold: 0,
+  growthSchedule: "targetLike",
+  axisAttraction: 0.18,
+  envelopeStrength: 0.35,
+  heightAmpBias: 0.5,
+  refineMode: "fixedCorners",
+  refineSteps: 1,
+  refineAmount: 0.12,
+  refineRelax: 0.18,
+  refineEdgeInflate: 0.35,
+  refineFaceInflate: 0.1,
+  massH: 51,
+  massD: 40,
+  massW: 40,
+  recursion: 4,
+  divThreshold: 2.2,
   posA: 0.5,
   ampA: 0.74,
   rotA: 0.5,
   posB: 0.5,
-  ampB: 0.09,
+  ampB: 0.12,
   rotB: 0.5,
   posC: 0.56,
   ampC: 0.43,
@@ -138,9 +136,9 @@ const params: Params = {
   conRotC: 0.5,
   edgeWeight: 2,
   showContract: false,
-  expansiveABVertical: false,
+  expansiveABVertical: true,
   showPointNormals: false,
-  contractToExpansionCenters: false,
+  contractToExpansionCenters: true,
   randomSeed: 1841919
 };
 
@@ -235,16 +233,15 @@ function buildControls(): void {
   controlsForm.innerHTML = "";
 
   addFieldset("Mass", [
-    checkbox("legacyTargetRules", "Target_4 legacy rules"),
     select("topology", "Topology", [
       ["single", "single face"],
       ["double", "double half pyramid"],
       ["quad", "quad full pyramid"]
     ]),
     checkbox("axisSymmetry", "Primary axis symmetry"),
-    slider("massH", "Mass H", 10, 140, 1),
-    slider("massD", "Mass D", 5, 70, 1),
-    ...(params.axisSymmetry ? [] : [slider("massW", "Mass W", 5, 70, 1)]),
+    slider("massH", "Mass H", 10, 80, 1),
+    slider("massD", "Mass D", 5, 50, 1),
+    ...(params.axisSymmetry ? [] : [slider("massW", "Mass W", 5, 50, 1)]),
     select("divisionMode", "Division", [
       ["abc", "all A/B/C"],
       ["a", "single A"],
@@ -424,30 +421,29 @@ function readout(labelText: string, value: string): HTMLElement {
 
 function resetParams(): void {
   Object.assign(params, {
-    legacyTargetRules: true,
-    topology: "double",
+    topology: "quad",
     axisSymmetry: true,
     divisionMode: "abc",
-    growthSchedule: "uniform",
-    axisAttraction: 0,
-    envelopeStrength: 0,
-    heightAmpBias: 0,
-    refineMode: "off",
-    refineSteps: 0,
-    refineAmount: 0,
-    refineRelax: 0,
-    refineEdgeInflate: 0,
-    refineFaceInflate: 0,
-    massH: 125,
-    massD: 35,
-    massW: 35,
-    recursion: 6,
-    divThreshold: 0,
+    growthSchedule: "targetLike",
+    axisAttraction: 0.18,
+    envelopeStrength: 0.35,
+    heightAmpBias: 0.5,
+    refineMode: "fixedCorners",
+    refineSteps: 1,
+    refineAmount: 0.12,
+    refineRelax: 0.18,
+    refineEdgeInflate: 0.35,
+    refineFaceInflate: 0.1,
+    massH: 51,
+    massD: 40,
+    massW: 40,
+    recursion: 4,
+    divThreshold: 2.2,
     posA: 0.5,
     ampA: 0.74,
     rotA: 0.5,
     posB: 0.5,
-    ampB: 0.09,
+    ampB: 0.12,
     rotB: 0.5,
     posC: 0.56,
     ampC: 0.43,
@@ -462,9 +458,9 @@ function resetParams(): void {
     conAmpC: -0.1,
     conRotC: 0.5,
     edgeWeight: 2,
-    expansiveABVertical: false,
+    expansiveABVertical: true,
     showPointNormals: false,
-    contractToExpansionCenters: false,
+    contractToExpansionCenters: true,
     showContract: false,
     randomSeed: 1841919
   });
@@ -472,49 +468,48 @@ function resetParams(): void {
 
 function randomizeTargetLike(seed = randomSeed()): void {
   const rng = new SeededRandom(seed);
-  const base = roundTo(rng.range(31, 38), 1);
+  const base = roundTo(rng.range(36, 44), 1);
   Object.assign(params, {
-    legacyTargetRules: true,
-    topology: "double",
+    topology: "quad",
     axisSymmetry: true,
     divisionMode: "abc",
-    growthSchedule: "uniform",
-    axisAttraction: 0,
-    envelopeStrength: 0,
-    heightAmpBias: 0,
-    massH: Math.round(rng.range(118, 130)),
+    growthSchedule: "targetLike",
+    axisAttraction: randomNear(rng, 0.18, 0.08),
+    envelopeStrength: randomNear(rng, 0.35, 0.12),
+    heightAmpBias: randomNear(rng, 0.5, 0.18, 0.1, 0.9),
+    massH: Math.round(rng.range(48, 66)),
     massD: base,
     massW: base,
-    recursion: 6,
-    divThreshold: 0,
-    refineMode: "off",
-    refineSteps: 0,
-    refineAmount: 0,
-    refineRelax: 0,
-    refineEdgeInflate: 0,
-    refineFaceInflate: 0,
-    posA: randomNear(rng, 0.5, 0.05, 0.35, 0.65),
-    ampA: randomNear(rng, 0.74, 0.14, 0.45, 0.9),
-    rotA: randomNear(rng, 0.5, 0.08, 0.25, 0.75),
-    posB: randomNear(rng, 0.5, 0.05, 0.35, 0.65),
-    ampB: randomNear(rng, 0.09, 0.08, -0.03, 0.25),
-    rotB: randomNear(rng, 0.5, 0.08, 0.25, 0.75),
-    posC: randomNear(rng, 0.56, 0.06, 0.35, 0.7),
-    ampC: randomNear(rng, 0.43, 0.14, 0.18, 0.68),
-    rotC: randomNear(rng, 0.57, 0.08, 0.25, 0.75),
-    conPosA: 0.5,
-    conAmpA: randomNear(rng, 0.1, 0.08, -0.03, 0.22),
-    conRotA: 0.5,
-    conPosB: 0.5,
-    conAmpB: randomNear(rng, -0.1, 0.08, -0.24, 0.04),
-    conRotB: 0.5,
-    conPosC: 0.5,
-    conAmpC: randomNear(rng, -0.1, 0.08, -0.24, 0.04),
-    conRotC: 0.5,
+    recursion: rng.int(4, 5),
+    divThreshold: roundTo(rng.range(1.8, 3.2), 0.1),
+    refineMode: rng.next() > 0.35 ? "fixedCorners" : "smooth",
+    refineSteps: rng.int(1, 2),
+    refineAmount: randomNear(rng, 0.12, 0.16, -0.12, 0.32),
+    refineRelax: randomNear(rng, 0.2, 0.1),
+    refineEdgeInflate: randomNear(rng, 0.35, 0.15),
+    refineFaceInflate: randomNear(rng, 0.1, 0.08),
+    posA: randomNear(rng, 0.5, 0.05),
+    ampA: randomNear(rng, 0.66, 0.1),
+    rotA: randomNear(rng, 0.5, 0.06),
+    posB: randomNear(rng, 0.5, 0.05),
+    ampB: randomNear(rng, 0.13, 0.08),
+    rotB: randomNear(rng, 0.5, 0.06),
+    posC: randomNear(rng, 0.54, 0.06),
+    ampC: randomNear(rng, 0.42, 0.12),
+    rotC: randomNear(rng, 0.55, 0.07),
+    conPosA: randomNear(rng, 0.5, 0.04),
+    conAmpA: randomNear(rng, 0.1, 0.06, -0.02, 0.18),
+    conRotA: randomNear(rng, 0.5, 0.05),
+    conPosB: randomNear(rng, 0.5, 0.04),
+    conAmpB: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
+    conRotB: randomNear(rng, 0.5, 0.05),
+    conPosC: randomNear(rng, 0.5, 0.04),
+    conAmpC: randomNear(rng, -0.1, 0.07, -0.2, 0.02),
+    conRotC: randomNear(rng, 0.5, 0.05),
     edgeWeight: params.edgeWeight,
     showContract: false,
-    expansiveABVertical: false,
-    contractToExpansionCenters: false,
+    expansiveABVertical: true,
+    contractToExpansionCenters: true,
     randomSeed: seed
   });
 }
@@ -574,64 +569,11 @@ function generateFormResult(maxLevel: number): { refinedTriangles: RenderTriangl
   const transforms = topologyTransforms();
   const seedRecursiveTriangles: AlgoTriangle[] = [];
   subdivideRecursive(base, 0, true, seedRecursiveTriangles, new Map(), maxLevel);
-  const canonicalTriangles = params.legacyTargetRules
-    ? normalizeLegacyOutput(seedRecursiveTriangles)
-    : seedRecursiveTriangles;
   const debugTriangles = transforms.flatMap((transform) =>
-    canonicalTriangles.map((triangle) => transformTriangle(triangle, transform))
+    seedRecursiveTriangles.map((triangle) => transformTriangle(triangle, transform))
   );
   const refinedTriangles = refineRecursiveTriangles(debugTriangles);
   return { refinedTriangles, debugTriangles };
-}
-
-function normalizeLegacyOutput(triangles: AlgoTriangle[]): AlgoTriangle[] {
-  const points = triangles.flatMap((triangle) => [triangle.a, triangle.b, triangle.c]);
-  const bounds = new THREE.Box3();
-  for (const pointNode of points) bounds.expandByPoint(pointNode.position);
-  const size = new THREE.Vector3();
-  bounds.getSize(size);
-  if (size.x <= 0 || size.y <= 0 || size.z <= 0) return triangles;
-
-  const target = baseFootprint();
-  const scale = new THREE.Vector3(
-    target.x / size.x,
-    params.massH / size.y,
-    target.z / size.z
-  );
-  const normalized = new Map<PointNode, PointNode>();
-  const normalizeNode = (pointNode: PointNode): PointNode => {
-    const existing = normalized.get(pointNode);
-    if (existing) return existing;
-    const position = normalizeLegacyVector(pointNode.position, bounds.min, scale);
-    const origin = pointNode.origin
-      ? normalizeLegacyVector(pointNode.origin, bounds.min, scale)
-      : undefined;
-    const next = point(position, pointNode.polarity, origin);
-    normalized.set(pointNode, next);
-    return next;
-  };
-
-  return triangles.map((triangle) => ({
-    a: normalizeNode(triangle.a),
-    b: normalizeNode(triangle.b),
-    c: normalizeNode(triangle.c),
-    state: triangle.state,
-    dirA: triangle.dirA,
-    dirB: triangle.dirB,
-    dirC: triangle.dirC
-  }));
-}
-
-function normalizeLegacyVector(
-  vector: THREE.Vector3,
-  min: THREE.Vector3,
-  scale: THREE.Vector3
-): THREE.Vector3 {
-  return new THREE.Vector3(
-    (vector.x - min.x) * scale.x,
-    (vector.y - min.y) * scale.y,
-    (vector.z - min.z) * scale.z
-  );
 }
 
 function drawStepPreviews(): void {
@@ -803,8 +745,6 @@ function subdivideOnce(
 }
 
 function activeDivisionEdges(level: number): Set<"A" | "B" | "C"> {
-  if (params.legacyTargetRules) return new Set(["A", "B", "C"]);
-
   const mode = scheduledDivisionMode(level);
   if (mode === "a") return new Set(["A"]);
   if (mode === "b") return new Set(["B"]);
@@ -857,8 +797,6 @@ function edgeConstruct(
   polarity: boolean,
   dir: boolean
 ): PointNode {
-  if (params.legacyTargetRules) return legacyEdgeConstruct(a, b, edge, polarity, dir);
-
   const settings = polarity ? expandSettings(edge, dir) : contractSettings(edge, dir);
   const origin = edgeOrigin(a, b, settings.pos);
   const verticalAB = params.expansiveABVertical && (edge === "A" || edge === "B");
@@ -885,20 +823,6 @@ function edgeConstruct(
 
   const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * scheduledAmp(settings.amp, origin));
   return point(shapeGeneratedPosition(origin.clone().add(displacement), origin), pol, origin);
-}
-
-function legacyEdgeConstruct(
-  a: PointNode,
-  b: PointNode,
-  edge: "A" | "B" | "C",
-  polarity: boolean,
-  dir: boolean
-): PointNode {
-  const settings = polarity ? expandSettings(edge, dir) : contractSettings(edge, dir);
-  const origin = edgeOrigin(a, b, settings.pos);
-  const pol = a.polarity.clone().lerp(b.polarity, settings.rot).normalize();
-  const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * settings.amp);
-  return point(origin.clone().add(displacement), pol, origin);
 }
 
 function scheduledAmp(amp: number, origin: THREE.Vector3): number {
