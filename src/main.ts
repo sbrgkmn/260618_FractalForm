@@ -1,6 +1,7 @@
 import "./style.css";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { SeededRandom, clamp, randomSeed } from "./random";
 
 type PointNode = {
@@ -36,11 +37,16 @@ type SymmetryTransform =
   | "mirrorZ"
   | "mirrorXZ";
 type DivisionMode = "abc" | "a" | "b" | "c" | "ab" | "bc" | "ca";
+type GrowthSchedule = "uniform" | "ridgeFirst" | "verticalShell" | "targetLike";
 
 type Params = {
   topology: "single" | "double" | "quad";
   axisSymmetry: boolean;
   divisionMode: DivisionMode;
+  growthSchedule: GrowthSchedule;
+  axisAttraction: number;
+  envelopeStrength: number;
+  heightAmpBias: number;
   refineMode: "off" | "smooth" | "fixedCorners";
   refineSteps: number;
   refineAmount: number;
@@ -85,8 +91,8 @@ type View = {
   controls?: OrbitControls;
 };
 
-type DivisionPreview = {
-  mode: DivisionMode;
+type StepPreview = {
+  level: number;
   view: View;
   group: THREE.Group;
 };
@@ -95,6 +101,10 @@ const params: Params = {
   topology: "quad",
   axisSymmetry: true,
   divisionMode: "abc",
+  growthSchedule: "targetLike",
+  axisAttraction: 0.18,
+  envelopeStrength: 0.35,
+  heightAmpBias: 0.5,
   refineMode: "fixedCorners",
   refineSteps: 1,
   refineAmount: 0.12,
@@ -135,33 +145,57 @@ const params: Params = {
 const triangleCount = document.querySelector<HTMLElement>("#triangleCount");
 const warning = document.querySelector<HTMLElement>("#warning");
 const controlsForm = document.querySelector<HTMLFormElement>("#controls");
+const tabButtons = [...document.querySelectorAll<HTMLButtonElement>(".tabButton")];
+const tabPanes = [...document.querySelectorAll<HTMLElement>(".tabPane")];
 
+const targetView = makeView("targetCanvas", true);
 const edgeView = makeView("edgeCanvas", false);
+const generatedView = makeView("generatedCanvas", true);
+const targetGroup = new THREE.Group();
 const edgeGroup = new THREE.Group();
+const generatedGroup = new THREE.Group();
+targetView.scene.add(targetGroup);
 edgeView.scene.add(edgeGroup);
+generatedView.scene.add(generatedGroup);
+addLights(targetView.scene);
 addLights(edgeView.scene);
+addLights(generatedView.scene);
 
-const divisionPreviews: DivisionPreview[] = [
-  makeDivisionPreview("abc", "divisionAbcCanvas"),
-  makeDivisionPreview("a", "divisionACanvas"),
-  makeDivisionPreview("b", "divisionBCanvas"),
-  makeDivisionPreview("c", "divisionCCanvas"),
-  makeDivisionPreview("ab", "divisionAbCanvas"),
-  makeDivisionPreview("bc", "divisionBcCanvas"),
-  makeDivisionPreview("ca", "divisionCaCanvas")
+const stepPreviews: StepPreview[] = [
+  makeStepPreview(0),
+  makeStepPreview(1),
+  makeStepPreview(2),
+  makeStepPreview(3),
+  makeStepPreview(4),
+  makeStepPreview(5),
+  makeStepPreview(6)
 ];
 
 buildControls();
+bindTabs();
+loadTarget();
 rebuildLab();
 window.addEventListener("resize", resizeAll);
 animate();
 
-function makeDivisionPreview(mode: DivisionMode, canvasId: string): DivisionPreview {
+function makeStepPreview(level: number): StepPreview {
+  const canvasId = `step${level}Canvas`;
   const view = makeView(canvasId, true);
   const group = new THREE.Group();
   view.scene.add(group);
   addLights(view.scene);
-  return { mode, view, group };
+  return { level, view, group };
+}
+
+function bindTabs(): void {
+  for (const buttonEl of tabButtons) {
+    buttonEl.addEventListener("click", () => {
+      const targetId = buttonEl.dataset.tab;
+      tabButtons.forEach((button) => button.classList.toggle("active", button === buttonEl));
+      tabPanes.forEach((pane) => pane.classList.toggle("active", pane.id === targetId));
+      resizeAll();
+    });
+  }
 }
 
 function makeView(canvasId: string, orbit: boolean): View {
@@ -219,6 +253,18 @@ function buildControls(): void {
     ]),
     slider("recursion", "Recursion", 0, 6, 1),
     slider("divThreshold", "Min edge", 0, 12, 0.1)
+  ]);
+
+  addFieldset("Growth Schedule", [
+    select("growthSchedule", "Schedule", [
+      ["uniform", "uniform"],
+      ["ridgeFirst", "ridge first"],
+      ["verticalShell", "vertical shell"],
+      ["targetLike", "target-like"]
+    ]),
+    slider("axisAttraction", "Axis pull", 0, 1, 0.01),
+    slider("envelopeStrength", "Envelope", 0, 1, 0.01),
+    slider("heightAmpBias", "Height amp", -1, 1, 0.01)
   ]);
 
   addFieldset("Surface Refinement", [
@@ -378,6 +424,10 @@ function resetParams(): void {
     topology: "quad",
     axisSymmetry: true,
     divisionMode: "abc",
+    growthSchedule: "targetLike",
+    axisAttraction: 0.18,
+    envelopeStrength: 0.35,
+    heightAmpBias: 0.5,
     refineMode: "fixedCorners",
     refineSteps: 1,
     refineAmount: 0.12,
@@ -423,6 +473,10 @@ function randomizeTargetLike(seed = randomSeed()): void {
     topology: "quad",
     axisSymmetry: true,
     divisionMode: "abc",
+    growthSchedule: "targetLike",
+    axisAttraction: randomNear(rng, 0.18, 0.08),
+    envelopeStrength: randomNear(rng, 0.35, 0.12),
+    heightAmpBias: randomNear(rng, 0.5, 0.18, 0.1, 0.9),
     massH: Math.round(rng.range(48, 66)),
     massD: base,
     massW: base,
@@ -472,33 +526,61 @@ function formatValue(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
+function loadTarget(): void {
+  const loader = new STLLoader();
+  loader.load(
+    "/Target_4.stl",
+    (geometry) => {
+      geometry.rotateX(-Math.PI / 2);
+      geometry.computeVertexNormals();
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      if (box) {
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        geometry.translate(-center.x, -box.min.y, -center.z);
+      }
+      geometry.computeBoundingSphere();
+      clearGroup(targetGroup);
+      const mesh = new THREE.Mesh(geometry, material(0xf2f0e8, true));
+      targetGroup.add(mesh);
+      targetGroup.add(edgesFor(geometry, 0x171717, 0.38));
+      frame(targetView, targetGroup, new THREE.Vector3(0.82, 0.36, 1));
+    },
+    undefined,
+    () => {
+      if (warning) warning.textContent = "Could not load public/Target_4.stl";
+    }
+  );
+}
+
 function rebuildLab(): void {
   const base = baseTriangle();
   drawEdgeOperation(base);
 
-  const selected = params.divisionMode;
-  let selectedCount = 0;
-  for (const preview of divisionPreviews) {
-    const result = generateDivisionResult(preview.mode);
-    drawDivisionPreview(preview, result.refinedTriangles, result.debugTriangles);
-    if (preview.mode === selected) selectedCount = result.refinedTriangles.length;
-  }
-  if (triangleCount) triangleCount.textContent = selectedCount.toLocaleString();
+  const result = generateFormResult(params.recursion);
+  drawGeneratedForm(result.refinedTriangles, result.debugTriangles);
+  drawStepPreviews();
+  if (triangleCount) triangleCount.textContent = result.refinedTriangles.length.toLocaleString();
 }
 
-function generateDivisionResult(mode: DivisionMode): { refinedTriangles: RenderTriangle[]; debugTriangles: AlgoTriangle[] } {
-  const previousMode = params.divisionMode;
-  params.divisionMode = mode;
+function generateFormResult(maxLevel: number): { refinedTriangles: RenderTriangle[]; debugTriangles: AlgoTriangle[] } {
   const base = baseTriangle();
   const transforms = topologyTransforms();
   const seedRecursiveTriangles: AlgoTriangle[] = [];
-  subdivideRecursive(base, 0, true, seedRecursiveTriangles, new Map());
+  subdivideRecursive(base, 0, true, seedRecursiveTriangles, new Map(), maxLevel);
   const debugTriangles = transforms.flatMap((transform) =>
     seedRecursiveTriangles.map((triangle) => transformTriangle(triangle, transform))
   );
   const refinedTriangles = refineRecursiveTriangles(debugTriangles);
-  params.divisionMode = previousMode;
   return { refinedTriangles, debugTriangles };
+}
+
+function drawStepPreviews(): void {
+  for (const preview of stepPreviews) {
+    const result = generateFormResult(Math.min(preview.level, params.recursion));
+    drawStepPreview(preview, result.refinedTriangles, result.debugTriangles);
+  }
 }
 
 function baseTriangle(): AlgoTriangle {
@@ -597,7 +679,7 @@ function subdivideOnce(
   cache?: EdgeCache,
   level = 0
 ): AlgoTriangle[] {
-  const activeEdges = activeDivisionEdges();
+  const activeEdges = activeDivisionEdges(level);
   const splitA = activeEdges.has("A");
   const splitB = activeEdges.has("B");
   const splitC = activeEdges.has("C");
@@ -662,14 +744,33 @@ function subdivideOnce(
   return children.filter((child) => triangleArea(child) > 0.000001);
 }
 
-function activeDivisionEdges(): Set<"A" | "B" | "C"> {
-  if (params.divisionMode === "a") return new Set(["A"]);
-  if (params.divisionMode === "b") return new Set(["B"]);
-  if (params.divisionMode === "c") return new Set(["C"]);
-  if (params.divisionMode === "ab") return new Set(["A", "B"]);
-  if (params.divisionMode === "bc") return new Set(["B", "C"]);
-  if (params.divisionMode === "ca") return new Set(["C", "A"]);
+function activeDivisionEdges(level: number): Set<"A" | "B" | "C"> {
+  const mode = scheduledDivisionMode(level);
+  if (mode === "a") return new Set(["A"]);
+  if (mode === "b") return new Set(["B"]);
+  if (mode === "c") return new Set(["C"]);
+  if (mode === "ab") return new Set(["A", "B"]);
+  if (mode === "bc") return new Set(["B", "C"]);
+  if (mode === "ca") return new Set(["C", "A"]);
   return new Set(["A", "B", "C"]);
+}
+
+function scheduledDivisionMode(level: number): DivisionMode {
+  if (params.growthSchedule === "uniform") return params.divisionMode;
+  if (params.growthSchedule === "ridgeFirst") {
+    if (level <= 1) return "a";
+    if (level === 2) return "ab";
+    return params.divisionMode;
+  }
+  if (params.growthSchedule === "verticalShell") {
+    if (level <= 1) return "ab";
+    if (level === 2) return "ca";
+    return "abc";
+  }
+  if (level === 0) return "ab";
+  if (level === 1) return "a";
+  if (level === 2) return "ca";
+  return "abc";
 }
 
 function subdivideRecursive(
@@ -677,15 +778,16 @@ function subdivideRecursive(
   level: number,
   polarity: boolean,
   output: AlgoTriangle[],
-  cache: EdgeCache
+  cache: EdgeCache,
+  maxLevel = params.recursion
 ): void {
-  if (level >= params.recursion || longestEdge(triangle) < params.divThreshold) {
+  if (level >= maxLevel || longestEdge(triangle) < params.divThreshold) {
     output.push(triangle);
     return;
   }
 
   const children = subdivideOnce(triangle, polarity, cache, level);
-  for (const child of children) subdivideRecursive(child, level + 1, !polarity, output, cache);
+  for (const child of children) subdivideRecursive(child, level + 1, !polarity, output, cache, maxLevel);
 }
 
 function edgeConstruct(
@@ -712,13 +814,41 @@ function edgeConstruct(
         : toTarget.normalize();
       const sign = settings.amp <= 0 ? 1 : -1;
       const signedDirection = directionToTarget.clone().multiplyScalar(sign);
-      const displacement = signedDirection.clone().multiplyScalar(a.position.distanceTo(b.position) * Math.abs(settings.amp));
-      return point(origin.clone().add(displacement), signedDirection, origin);
+      const displacement = signedDirection
+        .clone()
+        .multiplyScalar(a.position.distanceTo(b.position) * Math.abs(scheduledAmp(settings.amp, origin)));
+      return point(shapeGeneratedPosition(origin.clone().add(displacement), origin), signedDirection, origin);
     }
   }
 
-  const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * settings.amp);
-  return point(origin.clone().add(displacement), pol, origin);
+  const displacement = pol.clone().multiplyScalar(a.position.distanceTo(b.position) * scheduledAmp(settings.amp, origin));
+  return point(shapeGeneratedPosition(origin.clone().add(displacement), origin), pol, origin);
+}
+
+function scheduledAmp(amp: number, origin: THREE.Vector3): number {
+  const heightRatio = clamp(origin.y / Math.max(params.massH, 1), 0, 1);
+  return amp * (1 + params.heightAmpBias * heightRatio);
+}
+
+function shapeGeneratedPosition(position: THREE.Vector3, origin: THREE.Vector3): THREE.Vector3 {
+  const shaped = position.clone();
+  const heightRatio = clamp(shaped.y / Math.max(params.massH, 1), 0, 1.35);
+  const attraction = params.axisAttraction * (0.25 + heightRatio * 0.75);
+  shaped.x = THREE.MathUtils.lerp(shaped.x, 0, attraction);
+  shaped.z = THREE.MathUtils.lerp(shaped.z, 0, attraction);
+
+  const baseRadius = Math.max(params.massD, params.massW, 1);
+  const envelopeRadius = baseRadius * clamp(1.05 - heightRatio * 0.72, 0.18, 1.05);
+  const radial = Math.hypot(shaped.x, shaped.z);
+  if (radial > envelopeRadius) {
+    const envelopeT = params.envelopeStrength;
+    const limitedScale = THREE.MathUtils.lerp(1, envelopeRadius / radial, envelopeT);
+    shaped.x *= limitedScale;
+    shaped.z *= limitedScale;
+  }
+
+  if (origin.y === 0 && shaped.y < origin.y) shaped.y = origin.y;
+  return clampToGround(shaped);
 }
 
 function edgeConstructCached(
@@ -950,11 +1080,20 @@ function renderTrianglesFromMesh(mesh: IndexedMesh): RenderTriangle[] {
   }));
 }
 
-function drawDivisionPreview(preview: DivisionPreview, triangles: RenderTriangle[], debugTriangles: AlgoTriangle[]): void {
+function drawGeneratedForm(triangles: RenderTriangle[], debugTriangles: AlgoTriangle[]): void {
+  clearGroup(generatedGroup);
+  const geometry = renderTriangleGeometry(triangles);
+  generatedGroup.add(new THREE.Mesh(geometry, material(0xf2f0e8, true)));
+  generatedGroup.add(edgesFor(geometry, 0x111111, 0.35));
+  addTrianglePointDebug(generatedGroup, debugTriangles);
+  frame(generatedView, generatedGroup, new THREE.Vector3(0.85, 0.5, 1));
+}
+
+function drawStepPreview(preview: StepPreview, triangles: RenderTriangle[], debugTriangles: AlgoTriangle[]): void {
   clearGroup(preview.group);
   const geometry = renderTriangleGeometry(triangles);
   preview.group.add(new THREE.Mesh(geometry, material(0xf2f0e8, true)));
-  preview.group.add(edgesFor(geometry, 0x111111, 0.35));
+  preview.group.add(edgesFor(geometry, 0x111111, 0.4));
   addTrianglePointDebug(preview.group, debugTriangles);
   frame(preview.view, preview.group, new THREE.Vector3(0.85, 0.5, 1));
 }
@@ -1165,5 +1304,5 @@ function animate(): void {
 }
 
 function allViews(): View[] {
-  return [edgeView, ...divisionPreviews.map((preview) => preview.view)];
+  return [targetView, edgeView, generatedView, ...stepPreviews.map((preview) => preview.view)];
 }

@@ -8,38 +8,58 @@
   </head>
   <body>
     <div id="app">
-      <main id="labGrid">
-        <section class="viewPanel">
-          <header>EC edge construction</header>
-          <canvas id="edgeCanvas"></canvas>
+      <main id="workspace">
+        <nav id="tabs">
+          <button class="tabButton active" type="button" data-tab="mainTab">Form</button>
+          <button class="tabButton" type="button" data-tab="stepsTab">Recursion steps</button>
+        </nav>
+        <section id="mainTab" class="tabPane active">
+          <div id="mainGrid">
+            <section class="viewPanel">
+              <header>Target_4 reference</header>
+              <canvas id="targetCanvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>EC edge construction</header>
+              <canvas id="edgeCanvas"></canvas>
+            </section>
+            <section class="viewPanel generatedPanel">
+              <header>Generated form</header>
+              <canvas id="generatedCanvas"></canvas>
+            </section>
+          </div>
         </section>
-        <section class="viewPanel">
-          <header>Division all A/B/C</header>
-          <canvas id="divisionAbcCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division single A</header>
-          <canvas id="divisionACanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division single B</header>
-          <canvas id="divisionBCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division single C</header>
-          <canvas id="divisionCCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division pair A+B</header>
-          <canvas id="divisionAbCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division pair B+C</header>
-          <canvas id="divisionBcCanvas"></canvas>
-        </section>
-        <section class="viewPanel">
-          <header>Division pair C+A</header>
-          <canvas id="divisionCaCanvas"></canvas>
+        <section id="stepsTab" class="tabPane">
+          <div id="stepsGrid">
+            <section class="viewPanel">
+              <header>Seed</header>
+              <canvas id="step0Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 1</header>
+              <canvas id="step1Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 2</header>
+              <canvas id="step2Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 3</header>
+              <canvas id="step3Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 4</header>
+              <canvas id="step4Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 5</header>
+              <canvas id="step5Canvas"></canvas>
+            </section>
+            <section class="viewPanel">
+              <header>Recursion 6</header>
+              <canvas id="step6Canvas"></canvas>
+            </section>
+          </div>
         </section>
       </main>
       <aside id="controlPanel">
@@ -48,7 +68,7 @@
           <small>old project EC/subdivision rules</small>
         </div>
         <div id="stats">
-          <div><span>Selected preview triangles</span><strong id="triangleCount">0</strong></div>
+          <div><span>Generated triangles</span><strong id="triangleCount">0</strong></div>
         </div>
         <form id="controls"></form>
         <p id="warning"></p>
