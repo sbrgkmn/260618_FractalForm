@@ -603,13 +603,13 @@ function subdivideOnce(
   const splitC = activeEdges.has("C");
   const ab = splitA
     ? edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level)
-    : edgeMidpoint(triangle.a, triangle.b);
+    : triangle.a;
   const bc = splitB
     ? edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level)
-    : edgeMidpoint(triangle.b, triangle.c);
+    : triangle.b;
   const ca = splitC
     ? edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level)
-    : edgeMidpoint(triangle.c, triangle.a);
+    : triangle.c;
 
   const children: AlgoTriangle[] = [
     {
@@ -620,8 +620,11 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    },
-    {
+    }
+  ];
+
+  if (splitA) {
+    children.push({
       a: triangle.a,
       b: ab,
       c: ca,
@@ -629,8 +632,11 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    },
-    {
+    });
+  }
+
+  if (splitB) {
+    children.push({
       a: ab,
       b: triangle.b,
       c: bc,
@@ -638,8 +644,11 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    },
-    {
+    });
+  }
+
+  if (splitC) {
+    children.push({
       a: ca,
       b: bc,
       c: triangle.c,
@@ -647,8 +656,8 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    }
-  ];
+    });
+  }
 
   return children.filter((child) => triangleArea(child) > 0.000001);
 }
@@ -661,12 +670,6 @@ function activeDivisionEdges(): Set<"A" | "B" | "C"> {
   if (params.divisionMode === "bc") return new Set(["B", "C"]);
   if (params.divisionMode === "ca") return new Set(["C", "A"]);
   return new Set(["A", "B", "C"]);
-}
-
-function edgeMidpoint(a: PointNode, b: PointNode): PointNode {
-  const origin = edgeOrigin(a, b, 0.5);
-  const polarity = a.polarity.clone().lerp(b.polarity, 0.5);
-  return point(origin, polarity.lengthSq() > 0 ? polarity : new THREE.Vector3(0, 1, 0), origin);
 }
 
 function subdivideRecursive(
