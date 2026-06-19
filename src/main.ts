@@ -585,11 +585,18 @@ function makeSeed(a: PointNode, b: PointNode, c: PointNode): AlgoTriangle {
 }
 
 function point(position: THREE.Vector3, polarity: THREE.Vector3, origin?: THREE.Vector3): PointNode {
+  const safePosition = clampToGround(position);
   return {
-    position,
+    position: safePosition,
     polarity: polarity.clone().normalize(),
-    origin: origin?.clone()
+    origin: origin ? clampToGround(origin) : undefined
   };
+}
+
+function clampToGround(vector: THREE.Vector3): THREE.Vector3 {
+  const clamped = vector.clone();
+  clamped.y = Math.max(0, clamped.y);
+  return clamped;
 }
 
 function subdivideOnce(
@@ -602,9 +609,15 @@ function subdivideOnce(
   const splitA = activeEdges.has("A");
   const splitB = activeEdges.has("B");
   const splitC = activeEdges.has("C");
-  const ab = splitA ? edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level) : triangle.a;
-  const bc = splitB ? edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level) : triangle.b;
-  const ca = splitC ? edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level) : triangle.c;
+  const ab = splitA
+    ? edgeConstructCached(triangle.a, triangle.b, "A", polarity, triangle.dirA, cache, level)
+    : edgeMidpoint(triangle.a, triangle.b);
+  const bc = splitB
+    ? edgeConstructCached(triangle.b, triangle.c, "B", polarity, triangle.dirB, cache, level)
+    : edgeMidpoint(triangle.b, triangle.c);
+  const ca = splitC
+    ? edgeConstructCached(triangle.c, triangle.a, "C", polarity, triangle.dirC, cache, level)
+    : edgeMidpoint(triangle.c, triangle.a);
 
   const children: AlgoTriangle[] = [
     {
@@ -615,11 +628,8 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    }
-  ];
-
-  if (splitA) {
-    children.push({
+    },
+    {
       a: triangle.a,
       b: ab,
       c: ca,
@@ -627,11 +637,8 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    });
-  }
-
-  if (splitB) {
-    children.push({
+    },
+    {
       a: ab,
       b: triangle.b,
       c: bc,
@@ -639,11 +646,8 @@ function subdivideOnce(
       dirA: triangle.state ? !triangle.dirA : triangle.dirA,
       dirB: triangle.state ? triangle.dirB : !triangle.dirB,
       dirC: triangle.state ? !triangle.dirC : triangle.dirC
-    });
-  }
-
-  if (splitC) {
-    children.push({
+    },
+    {
       a: ca,
       b: bc,
       c: triangle.c,
@@ -651,8 +655,8 @@ function subdivideOnce(
       dirA: triangle.state ? triangle.dirA : !triangle.dirA,
       dirB: triangle.state ? !triangle.dirB : triangle.dirB,
       dirC: triangle.state ? triangle.dirC : !triangle.dirC
-    });
-  }
+    }
+  ];
 
   return children.filter((child) => triangleArea(child) > 0.000001);
 }
@@ -665,6 +669,12 @@ function activeDivisionEdges(): Set<"A" | "B" | "C"> {
   if (params.divisionMode === "bc") return new Set(["B", "C"]);
   if (params.divisionMode === "ca") return new Set(["C", "A"]);
   return new Set(["A", "B", "C"]);
+}
+
+function edgeMidpoint(a: PointNode, b: PointNode): PointNode {
+  const origin = edgeOrigin(a, b, 0.5);
+  const polarity = a.polarity.clone().lerp(b.polarity, 0.5);
+  return point(origin, polarity.lengthSq() > 0 ? polarity : new THREE.Vector3(0, 1, 0), origin);
 }
 
 function subdivideRecursive(
@@ -863,7 +873,7 @@ function subdivideMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: nu
       position.addScaledVector(normal, a.distanceTo(b) * amount * params.refineEdgeInflate);
     }
     const index = vertices.length;
-    vertices.push(position);
+    vertices.push(clampToGround(position));
     midpointByEdge.set(key, index);
     return index;
   };
@@ -899,10 +909,10 @@ function smoothMesh(mesh: IndexedMesh, mode: Params["refineMode"], amount: numbe
     average.multiplyScalar(1 / linked.size);
     averageEdge /= linked.size;
 
-    return vertex
+    return clampToGround(vertex
       .clone()
       .lerp(average, smoothStrength)
-      .addScaledVector(normals[index], averageEdge * amount * normalStrength);
+      .addScaledVector(normals[index], averageEdge * amount * normalStrength));
   });
 
   return {
