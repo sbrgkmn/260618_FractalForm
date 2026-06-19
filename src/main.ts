@@ -28,7 +28,14 @@ type IndexedMesh = {
   faces: MeshFace[];
   fixed: Set<number>;
 };
-type SymmetryTransform = "identity" | "mirror" | "rotate" | "rotateMirror" | "quarter" | "half" | "threeQuarter";
+type SymmetryTransform =
+  | "identity"
+  | "mirror"
+  | "rotate"
+  | "rotateMirror"
+  | "mirrorX"
+  | "mirrorZ"
+  | "mirrorXZ";
 
 type Params = {
   topology: "single" | "double" | "quad";
@@ -491,9 +498,9 @@ function rebuildLab(): void {
 function baseTriangle(): AlgoTriangle {
   const footprint = baseFootprint();
   return makeSeed(
-    point(new THREE.Vector3(-footprint.x, 0, footprint.z), new THREE.Vector3(-1, 0, 1)),
+    point(new THREE.Vector3(0, 0, footprint.z), new THREE.Vector3(0, 0, 1)),
     point(new THREE.Vector3(0, params.massH, 0), new THREE.Vector3(0, 1, 0)),
-    point(new THREE.Vector3(footprint.x, 0, footprint.z), new THREE.Vector3(1, 0, 1))
+    point(new THREE.Vector3(footprint.x, 0, 0), new THREE.Vector3(1, 0, 0))
   );
 }
 
@@ -509,8 +516,8 @@ function initialTopology(): AlgoTriangle[] {
 function topologyTransforms(): SymmetryTransform[] {
   if (params.axisSymmetry) {
     if (params.topology === "single") return ["identity"];
-    if (params.topology === "double") return ["identity", "quarter"];
-    return ["identity", "quarter", "half", "threeQuarter"];
+    if (params.topology === "double") return ["identity", "mirrorX"];
+    return ["identity", "mirrorX", "mirrorZ", "mirrorXZ"];
   }
   if (params.topology === "single") return ["identity"];
   if (params.topology === "double") return ["identity", "mirror"];
@@ -539,30 +546,14 @@ function transformPointNode(pointNode: PointNode, transform: SymmetryTransform):
 
 function transformVector(vector: THREE.Vector3, transform: SymmetryTransform, normalize: boolean): THREE.Vector3 {
   const transformed = vector.clone();
-  if (transform === "quarter") rotateAroundPrimaryAxis(transformed, 1);
-  if (transform === "half") rotateAroundPrimaryAxis(transformed, 2);
-  if (transform === "threeQuarter") rotateAroundPrimaryAxis(transformed, 3);
+  if (transform === "mirrorX" || transform === "mirrorXZ") transformed.x *= -1;
+  if (transform === "mirrorZ" || transform === "mirrorXZ") transformed.z *= -1;
   if (transform === "mirror" || transform === "rotateMirror") mirrorDiagonal(transformed);
   if (transform === "rotate" || transform === "rotateMirror") {
     transformed.x *= -1;
     transformed.z *= -1;
   }
   return normalize && transformed.lengthSq() > 0 ? transformed.normalize() : transformed;
-}
-
-function rotateAroundPrimaryAxis(vector: THREE.Vector3, turns: 1 | 2 | 3): void {
-  const x = vector.x;
-  const z = vector.z;
-  if (turns === 1) {
-    vector.x = z;
-    vector.z = -x;
-  } else if (turns === 2) {
-    vector.x = -x;
-    vector.z = -z;
-  } else {
-    vector.x = -z;
-    vector.z = x;
-  }
 }
 
 function mirrorDiagonal(vector: THREE.Vector3): void {
